@@ -60,7 +60,11 @@ http://localhost:5000
 3. **Watch the Debate**: See the LLMs take opposing positions on your chosen topic
 4. **Control the Debate**: Use the Stop and Reset buttons to control the flow
 
-Example topics you can try:
+Your session will persist even if you refresh the page or close and reopen your browser. Each visitor to the site gets their own private debate session.
+
+## Example Topics
+
+Try these topics for interesting debates:
 - Climate change
 - Artificial intelligence
 - Universal healthcare
@@ -68,19 +72,27 @@ Example topics you can try:
 - Space exploration
 - Veganism
 - Remote work
+- Nuclear energy
+- Social media regulation
+- Genetic engineering
 
-## Application Features
+## Key Features
 
+- **Persistent Sessions**: Your debate continues exactly where you left off if you refresh the page
+- **Multi-User Support**: Each visitor gets their own independent debate session
 - **Dynamic Topics**: Set any topic you want the LLMs to debate
-- **Real-time Updates**: See the conversation unfold in real-time
-- **Automatic Perspective Assignment**: LLMs automatically take opposing positions
+- **Real-time Updates**: See the conversation unfold with live typing indicators
+- **Responsive Design**: Works on desktops, tablets, and mobile devices
 - **Visual Differentiation**: Each side of the debate has distinct visual styling
+- **Message Ordering**: Messages are always presented in the correct chronological order
 
 ## Technical Details
 
-- Backend: Flask with Flask-SocketIO for real-time communication
-- Communication with LLMs: REST API calls to Ollama endpoints with dynamic system prompts
-- Frontend: HTML/CSS/JS with WebSocket updates
+- **Backend**: Flask with Flask-SocketIO for real-time communication
+- **Session Management**: Persistent sessions using Flask sessions and localStorage
+- **Communication with LLMs**: REST API calls to Ollama endpoints with dynamic system prompts
+- **Frontend**: HTML/CSS/JS with WebSocket updates and responsive design
+- **Conversation Tracking**: Timestamps ensure proper message ordering
 
 ## How It Works
 
@@ -90,3 +102,9 @@ The application dynamically generates appropriate system prompts based on your c
 - **Against Position LLM**: Receives a prompt to argue against the topic
 
 The system ensures that each LLM maintains its assigned perspective throughout the conversation, creating a balanced and engaging debate.
+
+## Browser Compatibility
+
+- Chrome, Firefox, Safari, Edge (latest versions)
+- Works on desktop and mobile devices
+- Maintains session state across page refreshes and browser restarts
