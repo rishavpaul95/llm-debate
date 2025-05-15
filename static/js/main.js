@@ -23,6 +23,30 @@ document.addEventListener('DOMContentLoaded', function() {
     // Store active streaming messages
     let activeStreamingMessages = {};
     
+    // Track if user is scrolled to bottom
+    let isNearBottom = true;
+    
+    // Check if the conversation container is scrolled to the bottom
+    function isScrolledNearBottom() {
+        const threshold = 100; // pixels from bottom to consider "at bottom"
+        return conversation.scrollHeight - conversation.clientHeight - conversation.scrollTop <= threshold;
+    }
+    
+    // Smart scroll that only auto-scrolls if already near the bottom
+    function smartScroll() {
+        if (isNearBottom) {
+            conversation.scrollTo({
+                top: conversation.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    }
+    
+    // Listen for user scrolling to track position
+    conversation.addEventListener('scroll', function() {
+        isNearBottom = isScrolledNearBottom();
+    });
+    
     // Connect to WebSocket
     socket.on('connect', function() {
         console.log('Connected to WebSocket');
@@ -67,6 +91,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // If this is a new streaming message, create a new message element
         if (!activeStreamingMessages[message_id]) {
+            // Check if user is at bottom before adding new message
+            isNearBottom = isScrolledNearBottom();
+            
             // Create new message container
             const messageDiv = createMessageElement(speaker, "", message_id);
             conversation.appendChild(messageDiv);
@@ -78,11 +105,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 fullText: ""
             };
             
-            // Auto scroll to bottom with smooth animation
-            conversation.scrollTo({
-                top: conversation.scrollHeight,
-                behavior: 'smooth'
-            });
+            // Smart scroll
+            smartScroll();
         }
         
         // Update the existing message with new content
@@ -90,11 +114,8 @@ document.addEventListener('DOMContentLoaded', function() {
         streamingMsg.fullText += message;
         streamingMsg.contentSpan.textContent = streamingMsg.fullText;
         
-        // Auto scroll to keep up with the message
-        conversation.scrollTo({
-            top: conversation.scrollHeight,
-            behavior: 'smooth'
-        });
+        // Smart scroll for content updates
+        smartScroll();
         
         // If this is the last chunk, remove from active streaming messages
         if (done) {
@@ -105,6 +126,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle legacy (non-streaming) new messages with staggered animation
     socket.on('new_message', function(data) {
         messageDelay += 100; // Stagger animations
+        
+        // Check if user is at bottom before scheduling the new message
+        isNearBottom = isScrolledNearBottom();
+        
         setTimeout(() => {
             addMessageToDisplay(data);
             messageDelay = 0; // Reset after a pause
@@ -154,11 +179,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageDiv = createMessageElement(data.speaker, data.message);
         conversation.appendChild(messageDiv);
         
-        // Auto scroll to bottom with smooth animation
-        conversation.scrollTo({
-            top: conversation.scrollHeight,
-            behavior: 'smooth'
-        });
+        // Smart scroll for new messages
+        smartScroll();
     }
     
     // Update status
@@ -304,10 +326,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.length > 0) {
                 // Set short delay between messages for animation
                 let delay = 0;
-                data.forEach(msg => {
+                data.forEach((msg, index) => {
                     delay += 100;
                     setTimeout(() => {
                         addMessageToDisplay(msg);
+                        // If this is the last message, ensure we're scrolled to the bottom
+                        if (index === data.length - 1) {
+                            isNearBottom = true; // Force scroll to bottom after loading history
+                            smartScroll();
+                        }
                     }, delay);
                 });
             }
