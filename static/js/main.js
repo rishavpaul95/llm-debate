@@ -1,5 +1,26 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const socket = io();
+    // Get session IDs from the server
+    const flaskSessionId = document.getElementById('flask-session-id')?.value;
+    const serverSocketIOSessionId = document.getElementById('socketio-session-id')?.value;
+    
+    // Check localStorage for existing session
+    const storedSocketIOSessionId = localStorage.getItem('llm_debate_socketio_id');
+    
+    // Determine which SocketIO session ID to use (prioritize server-provided one)
+    const socketIOSessionToUse = serverSocketIOSessionId || storedSocketIOSessionId;
+    
+    // Initialize query parameters for connection
+    const queryParams = {};
+    if (flaskSessionId) {
+        queryParams.flask_session_id = flaskSessionId;
+    }
+    if (socketIOSessionToUse) {
+        queryParams.session_id = socketIOSessionToUse;
+    }
+    
+    // Initialize socket connection with session parameters
+    const socket = io({query: queryParams});
+    
     const conversation = document.getElementById('conversation');
     const startBtn = document.getElementById('start-btn');
     const stopBtn = document.getElementById('stop-btn');
@@ -16,6 +37,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const forTyping = document.getElementById('for-typing');
     const againstTyping = document.getElementById('against-typing');
     
+    // Session management
+    let sessionId = null;
+    let isInitialLoad = true;
     let currentForLabel = "For position";
     let currentAgainstLabel = "Against position";
     let messageDelay = 0; // Used for staggered animation timing
@@ -50,7 +74,84 @@ document.addEventListener('DOMContentLoaded', function() {
     // Connect to WebSocket
     socket.on('connect', function() {
         console.log('Connected to WebSocket');
+        // Session will be initialized by the server
     });
+    
+    // Receive session ID from server and store it
+    socket.on('session_init', function(data) {
+        sessionId = data.session_id;
+        console.log('Session initialized:', sessionId);
+        
+        // Store session ID in localStorage for persistence
+        localStorage.setItem('llm_debate_socketio_id', sessionId);
+        
+        // Don't automatically load history since we'll get it from the server
+        isInitialLoad = false;
+    });
+    
+    // Handle receiving conversation history (for refreshed sessions)
+    socket.on('conversation_history', function(data) {
+        if (data.messages && data.messages.length > 0) {
+            // Clear existing conversation first to prevent duplicates
+            conversation.innerHTML = '';
+            
+            console.log('Restoring conversation history, messages:', data.messages.length);
+            
+            // Ensure proper message ordering by creating an array of delayed functions
+            const messageFunctions = [];
+            
+            // Create a function for each message with its own delay
+            data.messages.forEach((msg, index) => {
+                const delay = index * 50;  // Faster animation for restored messages
+                messageFunctions.push({
+                    func: () => addMessageToDisplay(msg),
+                    delay: delay,
+                    index: index
+                });
+            });
+            
+            // Execute all message functions in order
+            messageFunctions.forEach((item) => {
+                setTimeout(() => {
+                    item.func();
+                    // Scroll to bottom after all messages are added
+                    if (item.index === data.messages.length - 1) {
+                        isNearBottom = true;
+                        smartScroll();
+                    }
+                }, item.delay);
+            });
+        }
+    });
+    
+    // Load conversation history from the server
+    function loadConversationHistory() {
+        if (!sessionId) return;
+        
+        fetch(`/api/conversation?session_id=${sessionId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.length > 0) {
+                    // Clear existing messages first to prevent duplicates
+                    conversation.innerHTML = '';
+                    
+                    // Set short delay between messages for animation
+                    let delay = 0;
+                    data.forEach((msg, index) => {
+                        delay += 100;
+                        setTimeout(() => {
+                            addMessageToDisplay(msg);
+                            // If this is the last message, ensure we're scrolled to the bottom
+                            if (index === data.length - 1) {
+                                isNearBottom = true; // Force scroll to bottom after loading history
+                                smartScroll();
+                            }
+                        }, delay);
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading conversation history:', error));
+    }
     
     // Handle topic updates
     socket.on('topic_updated', function(data) {
@@ -183,7 +284,7 @@ document.addEventListener('DOMContentLoaded', function() {
         smartScroll();
     }
     
-    // Update status
+    // Update status with proper UI state restoration
     socket.on('conversation_status', function(data) {
         const debateMeta = document.querySelector('.debate-meta');
         statusText.textContent = data.active ? 'Active' : 'Idle';
@@ -191,23 +292,15 @@ document.addEventListener('DOMContentLoaded', function() {
         startBtn.disabled = data.active;
         stopBtn.disabled = !data.active;
         
-        // Slide topic form up/down based on status
+        // Slide topic form up/down based on status - ensure proper state after refresh
         if (data.active) {
-            if (topicForm.style.display !== 'none') {
-                topicForm.style.opacity = '0';
-                setTimeout(() => {
-                    topicForm.style.display = 'none';
-                    // Add spacing class when topic form is hidden
-                    debateMeta.classList.add('form-hidden');
-                }, 300);
-            }
+            topicForm.style.display = 'none';
+            topicForm.style.opacity = '0';
+            debateMeta.classList.add('form-hidden');
         } else {
             topicForm.style.display = 'block';
-            // Remove spacing class when topic form is visible
+            topicForm.style.opacity = '1';
             debateMeta.classList.remove('form-hidden');
-            setTimeout(() => {
-                topicForm.style.opacity = '1';
-            }, 10);
         }
         
         // Make sure typing indicators are hidden when conversation stops
@@ -219,10 +312,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Button event listeners with visual feedback
     startBtn.addEventListener('click', function() {
+        if (!sessionId) return;
+        
         const originalText = startBtn.innerHTML;
         startBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Starting...';
         
-        fetch('/api/start', { method: 'POST' })
+        fetch('/api/start', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId })
+        })
             .then(response => response.json())
             .then(data => {
                 console.log('Start response:', data);
@@ -235,10 +334,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     stopBtn.addEventListener('click', function() {
+        if (!sessionId) return;
+        
         const originalText = stopBtn.innerHTML;
         stopBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Stopping...';
         
-        fetch('/api/stop', { method: 'POST' })
+        fetch('/api/stop', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId })
+        })
             .then(response => response.json())
             .then(data => {
                 console.log('Stop response:', data);
@@ -251,10 +356,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     resetBtn.addEventListener('click', function() {
+        if (!sessionId) return;
+        
         const originalText = resetBtn.innerHTML;
         resetBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Resetting...';
         
-        fetch('/api/reset', { method: 'POST' })
+        fetch('/api/reset', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId })
+        })
             .then(response => response.json())
             .then(data => {
                 console.log('Reset response:', data);
@@ -280,6 +391,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function setDebateTopic() {
+        if (!sessionId) return;
+        
         const topic = topicInput.value.trim();
         if (!topic) {
             // Add validation style
@@ -297,7 +410,10 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ topic: topic })
+            body: JSON.stringify({ 
+                topic: topic,
+                session_id: sessionId
+            })
         })
         .then(response => response.json())
         .then(data => {
@@ -319,25 +435,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Load initial conversation history with animation
-    fetch('/api/conversation')
-        .then(response => response.json())
-        .then(data => {
-            if (data.length > 0) {
-                // Set short delay between messages for animation
-                let delay = 0;
-                data.forEach((msg, index) => {
-                    delay += 100;
-                    setTimeout(() => {
-                        addMessageToDisplay(msg);
-                        // If this is the last message, ensure we're scrolled to the bottom
-                        if (index === data.length - 1) {
-                            isNearBottom = true; // Force scroll to bottom after loading history
-                            smartScroll();
-                        }
-                    }, delay);
-                });
+    // Handle window visibility changes to properly reconnect if needed
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible' && sessionId) {
+            // When tab becomes visible again, check if we need to refresh the data
+            console.log("Tab visible again, checking connection status");
+            if (!socket.connected) {
+                console.log("Socket disconnected, attempting to reconnect");
+                socket.connect();
             }
-        })
-        .catch(error => console.error('Error loading conversation history:', error));
+        }
+    });
 });
