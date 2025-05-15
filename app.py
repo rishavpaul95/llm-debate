@@ -42,7 +42,8 @@ def generate_response(prompt, endpoint_url, is_for_position=True):
         "model": "gemma3:4b",
         "prompt": prompt,
         "system": system_prompt,
-        "stream": False
+        "stream": False,
+        "max_tokens": 350  # Limit output to about 4 paragraphs (approx. 350 tokens)
     }
     
     response = requests.post(endpoint_url, headers=headers, json=data)

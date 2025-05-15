@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     let currentForLabel = "For position";
     let currentAgainstLabel = "Against position";
+    let messageDelay = 0; // Used for staggered animation timing
     
     // Connect to WebSocket
     socket.on('connect', function() {
@@ -40,6 +41,10 @@ document.addEventListener('DOMContentLoaded', function() {
         againstPosition.textContent = againstLabel;
         currentForLabel = forLabel;
         currentAgainstLabel = againstLabel;
+        
+        // Add a subtle highlight effect to the title
+        debateTitle.classList.add('highlight');
+        setTimeout(() => debateTitle.classList.remove('highlight'), 1000);
     }
     
     // Handle typing indicators
@@ -53,8 +58,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Handle new messages
+    // Handle new messages with staggered animation
     socket.on('new_message', function(data) {
+        messageDelay += 100; // Stagger animations
+        setTimeout(() => {
+            addMessageToDisplay(data);
+            messageDelay = 0; // Reset after a pause
+        }, messageDelay);
+    });
+    
+    function addMessageToDisplay(data) {
         const messageDiv = document.createElement('div');
         
         // Determine CSS class based on speaker
@@ -74,6 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         messageDiv.className = `message ${speakerClass}`;
+        messageDiv.style.animationDelay = `${messageDelay}ms`;
         
         const speakerSpan = document.createElement('span');
         speakerSpan.className = 'speaker';
@@ -87,17 +101,39 @@ document.addEventListener('DOMContentLoaded', function() {
         messageDiv.appendChild(contentSpan);
         conversation.appendChild(messageDiv);
         
-        // Auto scroll to bottom
-        conversation.scrollTop = conversation.scrollHeight;
-    });
+        // Auto scroll to bottom with smooth animation
+        conversation.scrollTo({
+            top: conversation.scrollHeight,
+            behavior: 'smooth'
+        });
+    }
     
     // Update status
     socket.on('conversation_status', function(data) {
+        const debateMeta = document.querySelector('.debate-meta');
         statusText.textContent = data.active ? 'Active' : 'Idle';
         statusText.className = data.active ? 'status-value active' : 'status-value';
         startBtn.disabled = data.active;
         stopBtn.disabled = !data.active;
-        topicForm.style.display = data.active ? 'none' : 'block';
+        
+        // Slide topic form up/down based on status
+        if (data.active) {
+            if (topicForm.style.display !== 'none') {
+                topicForm.style.opacity = '0';
+                setTimeout(() => {
+                    topicForm.style.display = 'none';
+                    // Add spacing class when topic form is hidden
+                    debateMeta.classList.add('form-hidden');
+                }, 300);
+            }
+        } else {
+            topicForm.style.display = 'block';
+            // Remove spacing class when topic form is visible
+            debateMeta.classList.remove('form-hidden');
+            setTimeout(() => {
+                topicForm.style.opacity = '1';
+            }, 10);
+        }
         
         // Make sure typing indicators are hidden when conversation stops
         if (!data.active) {
@@ -106,36 +142,54 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Button event listeners
+    // Button event listeners with visual feedback
     startBtn.addEventListener('click', function() {
+        const originalText = startBtn.innerHTML;
+        startBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Starting...';
+        
         fetch('/api/start', { method: 'POST' })
             .then(response => response.json())
             .then(data => {
                 console.log('Start response:', data);
-                topicForm.style.display = 'none';
+                startBtn.innerHTML = originalText;
             })
-            .catch(error => console.error('Error starting conversation:', error));
+            .catch(error => {
+                console.error('Error starting conversation:', error);
+                startBtn.innerHTML = originalText;
+            });
     });
     
     stopBtn.addEventListener('click', function() {
+        const originalText = stopBtn.innerHTML;
+        stopBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Stopping...';
+        
         fetch('/api/stop', { method: 'POST' })
             .then(response => response.json())
             .then(data => {
                 console.log('Stop response:', data);
-                topicForm.style.display = 'block';
+                stopBtn.innerHTML = originalText;
             })
-            .catch(error => console.error('Error stopping conversation:', error));
+            .catch(error => {
+                console.error('Error stopping conversation:', error);
+                stopBtn.innerHTML = originalText;
+            });
     });
     
     resetBtn.addEventListener('click', function() {
+        const originalText = resetBtn.innerHTML;
+        resetBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Resetting...';
+        
         fetch('/api/reset', { method: 'POST' })
             .then(response => response.json())
             .then(data => {
                 console.log('Reset response:', data);
                 conversation.innerHTML = ''; // Clear conversation display
-                topicForm.style.display = 'block';
+                resetBtn.innerHTML = originalText;
             })
-            .catch(error => console.error('Error resetting conversation:', error));
+            .catch(error => {
+                console.error('Error resetting conversation:', error);
+                resetBtn.innerHTML = originalText;
+            });
     });
     
     // Topic form submission
@@ -153,9 +207,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function setDebateTopic() {
         const topic = topicInput.value.trim();
         if (!topic) {
-            alert('Please enter a topic');
+            // Add validation style
+            topicInput.classList.add('is-invalid');
+            setTimeout(() => topicInput.classList.remove('is-invalid'), 3000);
             return;
         }
+        
+        const originalText = setTopicBtn.innerHTML;
+        setTopicBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Setting...';
+        setTopicBtn.disabled = true;
         
         fetch('/api/topic', { 
             method: 'POST',
@@ -172,48 +232,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('Topic set:', data);
                 // Clear any existing conversation
                 conversation.innerHTML = '';
+                topicInput.value = '';
             }
+            setTopicBtn.innerHTML = originalText;
+            setTopicBtn.disabled = false;
         })
-        .catch(error => console.error('Error setting topic:', error));
+        .catch(error => {
+            console.error('Error setting topic:', error);
+            setTopicBtn.innerHTML = originalText;
+            setTopicBtn.disabled = false;
+        });
     }
     
-    // Load initial conversation history
+    // Load initial conversation history with animation
     fetch('/api/conversation')
         .then(response => response.json())
         .then(data => {
-            data.forEach(msg => {
-                // Use socket.on handler logic directly
-                const messageDiv = document.createElement('div');
-                
-                // Determine CSS class based on speaker
-                let speakerClass = '';
-                if (msg.speaker === 'Human') {
-                    speakerClass = 'human';
-                } else if (msg.speaker.includes('For ')) {
-                    speakerClass = 'for-position';
-                } else if (msg.speaker.includes('Against ')) {
-                    speakerClass = 'against-position';
-                } else {
-                    speakerClass = 'generic-llm'; // Fallback
-                }
-                
-                messageDiv.className = `message ${speakerClass}`;
-                
-                const speakerSpan = document.createElement('span');
-                speakerSpan.className = 'speaker';
-                speakerSpan.textContent = msg.speaker;
-                
-                const contentSpan = document.createElement('span');
-                contentSpan.className = 'content';
-                contentSpan.textContent = msg.message;
-                
-                messageDiv.appendChild(speakerSpan);
-                messageDiv.appendChild(contentSpan);
-                conversation.appendChild(messageDiv);
-            });
-            
-            // Auto scroll to bottom
-            conversation.scrollTop = conversation.scrollHeight;
+            if (data.length > 0) {
+                // Set short delay between messages for animation
+                let delay = 0;
+                data.forEach(msg => {
+                    delay += 100;
+                    setTimeout(() => {
+                        addMessageToDisplay(msg);
+                    }, delay);
+                });
+            }
         })
         .catch(error => console.error('Error loading conversation history:', error));
 });

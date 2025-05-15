@@ -9,7 +9,7 @@
     --dark-text: #212529;
     --gray-text: #6c757d;
     --border-radius: 8px;
-    --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --card-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     --transition: all 0.3s ease;
 }
 
@@ -23,36 +23,40 @@ body {
     font-family: 'Poppins', sans-serif;
     line-height: 1.6;
     color: var(--dark-text);
-    background-color: #f0f2f5;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+    min-height: 100vh;
     padding: 20px;
 }
 
-.container {
-    max-width: 900px;
+.debate-container {
+    max-width: 1000px;
     margin: 0 auto;
     background-color: white;
-    border-radius: var(--border-radius);
+    border-radius: 12px;
     box-shadow: var(--card-shadow);
     overflow: hidden;
+    transition: var(--transition);
 }
 
-header {
+.debate-header {
     background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
     text-align: center;
-    padding: 1.5rem;
+    padding: 1.8rem;
     position: relative;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 h1 {
     font-weight: 600;
     margin: 0;
     font-size: 1.8rem;
+    letter-spacing: 0.5px;
 }
 
-footer {
+.debate-footer {
     text-align: center;
-    padding: 1rem;
+    padding: 1.2rem;
     background-color: var(--light-bg);
     color: var(--gray-text);
     font-size: 0.9rem;
@@ -62,11 +66,10 @@ footer {
 /* Topic form styling */
 .topic-form {
     margin: 1.5rem;
-    padding: 1.5rem;
-    background-color: var(--light-bg);
+    background-color: white;
     border-radius: var(--border-radius);
-    border: 1px solid #dee2e6;
     transition: var(--transition);
+    border: none;
 }
 
 .topic-form h3 {
@@ -76,25 +79,23 @@ footer {
 }
 
 .input-group {
-    display: flex;
-    gap: 10px;
     margin-bottom: 0.8rem;
 }
 
 #topic-input {
-    flex: 1;
     padding: 0.8rem 1rem;
     border: 1px solid #ced4da;
     border-radius: var(--border-radius);
     font-size: 1rem;
     font-family: inherit;
     transition: var(--transition);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.075);
 }
 
 #topic-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.2);
+    box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25);
 }
 
 .help-text {
@@ -108,18 +109,26 @@ footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 1.5rem;
-    margin-bottom: 1.5rem;
+    padding: 0 1.5rem 1rem;
+    margin-bottom: 1rem;
     flex-wrap: wrap;
     gap: 1rem;
+}
+
+/* Add space when topic form is hidden - debate is active */
+.debate-meta.form-hidden {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0,0,0,0.05);
 }
 
 .status-panel {
     background-color: var(--light-bg);
     padding: 0.5rem 1rem;
-    border-radius: var(--border-radius);
+    border-radius: 50px;
     display: inline-flex;
     align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
 }
 
 .status-label {
@@ -128,7 +137,7 @@ footer {
 }
 
 .status-value {
-    padding: 0.2rem 0.6rem;
+    padding: 0.2rem 0.8rem;
     background-color: #e9ecef;
     border-radius: 20px;
     font-size: 0.9rem;
@@ -143,7 +152,7 @@ footer {
 /* Button styling */
 .controls {
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 .btn {
@@ -157,6 +166,9 @@ footer {
     transition: var(--transition);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .primary-btn {
@@ -166,6 +178,8 @@ footer {
 
 .primary-btn:hover {
     background-color: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 .danger-btn {
@@ -175,6 +189,8 @@ footer {
 
 .danger-btn:hover {
     background-color: #d32f2f;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 .secondary-btn {
@@ -184,12 +200,16 @@ footer {
 
 .secondary-btn:hover {
     background-color: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 .btn:disabled {
     background-color: #e9ecef;
     color: #adb5bd;
     cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 /* Debate arena */
@@ -201,26 +221,37 @@ footer {
 .participants {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: stretch;
     margin-bottom: 1.5rem;
     position: relative;
+    gap: 10px;
 }
 
 .participant {
     flex: 1;
-    padding: 1rem;
-    border-radius: var(--border-radius);
+    padding: 1.2rem;
+    border-radius: 10px;
     text-align: center;
     position: relative;
     box-shadow: var(--card-shadow);
     z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.participant:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.1);
 }
 
 .vs-badge {
     background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
-    width: 40px;
-    height: 40px;
+    width: 50px;
+    height: 50px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -228,23 +259,23 @@ footer {
     font-weight: bold;
     position: absolute;
     left: 50%;
-    transform: translateX(-50%);
+    top: 50%;
+    transform: translate(-50%, -50%);
     z-index: 2;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    font-size: 1.1rem;
 }
 
 .participant.for {
-    background-color: var(--for-bg-light);
+    background: linear-gradient(135deg, var(--for-bg-light), white);
     color: var(--for-color);
     border: 2px solid var(--for-color);
-    margin-left: 0.5rem;
 }
 
 .participant.against {
-    background-color: var(--against-bg-light);
+    background: linear-gradient(135deg, var(--against-bg-light), white);
     color: var(--against-color);
     border: 2px solid var(--against-color);
-    margin-right: 0.5rem;
 }
 
 .participant-label {
@@ -256,7 +287,7 @@ footer {
 .typing-indicator {
     display: none;
     justify-content: center;
-    margin-top: 0.5rem;
+    margin-top: 0.8rem;
 }
 
 .typing-indicator.visible {
@@ -301,10 +332,11 @@ footer {
     max-height: 500px;
     overflow-y: auto;
     border: 1px solid #dee2e6;
-    padding: 1rem;
-    border-radius: var(--border-radius);
-    background-color: var(--light-bg);
+    padding: 1.5rem;
+    border-radius: 12px;
+    background-color: #ffffff;
     scrollbar-width: thin;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
 }
 
 .conversation-container::-webkit-scrollbar {
@@ -317,11 +349,21 @@ footer {
 }
 
 .message {
-    margin-bottom: 1rem;
-    padding: 1rem;
-    border-radius: var(--border-radius);
+    margin-bottom: 1.2rem;
+    padding: 1rem 1.2rem;
+    border-radius: 12px;
     position: relative;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    animation: message-appear 0.5s ease-out forwards;
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+@keyframes message-appear {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .message.human {
@@ -329,18 +371,25 @@ footer {
     text-align: center;
     border-left: none;
     font-style: italic;
+    max-width: 80%;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .message.for-position {
     background-color: var(--for-bg-light);
     margin-left: 2rem;
+    margin-right: 0.5rem;
     border-left: 4px solid var(--for-color);
+    border-radius: 3px 12px 12px 3px;
 }
 
 .message.against-position {
     background-color: var(--against-bg-light);
     margin-right: 2rem;
+    margin-left: 0.5rem;
     border-left: 4px solid var(--against-color);
+    border-radius: 3px 12px 12px 3px;
 }
 
 .speaker {
@@ -351,11 +400,15 @@ footer {
 
 .content {
     white-space: pre-wrap;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+    
     .debate-meta {
         flex-direction: column;
         align-items: stretch;
@@ -367,11 +420,17 @@ footer {
     
     .controls {
         justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
     }
     
     .participants {
         flex-direction: column;
-        gap: 1rem;
+        gap: 2rem;
     }
     
     .participant {
@@ -382,11 +441,53 @@ footer {
     .vs-badge {
         position: static;
         transform: none;
-        margin: 0.5rem auto;
+        margin: 1rem auto;
+        width: 40px;
+        height: 40px;
+        font-size: 0.9rem;
     }
     
     .message.for-position,
     .message.against-position {
-        margin: 0 0 1rem 0;
+        margin-left: 0.5rem;
+        margin-right: 0.5rem;
+    }
+    
+    .debate-header {
+        padding: 1.5rem;
+    }
+    
+    h1 {
+        font-size: 1.5rem;
+    }
+    
+    .debate-meta.form-hidden {
+        margin-top: 1rem;  /* Less spacing on mobile */
+    }
+}
+
+@media (max-width: 480px) {
+    .debate-container {
+        border-radius: 8px;
+    }
+    
+    .topic-form h3 {
+        font-size: 1.2rem;
+    }
+    
+    .input-group {
+        flex-direction: column;
+    }
+    
+    #topic-input {
+        border-radius: 6px;
+    }
+    
+    .conversation-container {
+        padding: 1rem;
+    }
+    
+    .message {
+        padding: 0.8rem 1rem;
     }
 }
