@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Debate</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 id="debate-title">LLM Debate Arena</h1>
+        </header>
+        
+        <div class="topic-form" id="topic-form">
+            <h3>What should the LLMs debate about?</h3>
+            <div class="input-group">
+                <input type="text" id="topic-input" placeholder="e.g., climate change, AI ethics, space exploration">
+                <button id="set-topic-btn" class="btn">Set Topic</button>
+            </div>
+            <p class="help-text">Enter any topic and watch two AI debaters take opposing sides.</p>
+        </div>
+        
+        <div class="debate-meta">
+            <div class="status-panel">
+                <span class="status-label">Status:</span>
+                <span id="status-text" class="status-value">Idle</span>
+            </div>
+            
+            <div class="controls">
+                <button id="start-btn" class="btn primary-btn">Start Debate</button>
+                <button id="stop-btn" class="btn danger-btn">Stop</button>
+                <button id="reset-btn" class="btn secondary-btn">Reset</button>
+            </div>
+        </div>
+        
+        <div class="debate-arena">
+            <div class="participants">
+                <div class="participant against">
+                    <div class="participant-label" id="against-position">Against position</div>
+                    <div class="typing-indicator against-typing" id="against-typing">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                </div>
+                <div class="vs-badge">VS</div>
+                <div class="participant for">
+                    <div class="participant-label" id="for-position">For position</div>
+                    <div class="typing-indicator for-typing" id="for-typing">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="conversation-container" id="conversation">
+                <!-- Messages will be inserted here -->
+            </div>
+        </div>
+        
+        <footer>
+            <p>LLM Debate Arena | Powered by Ollama and Flask</p>
+        </footer>
+    </div>
+    
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
