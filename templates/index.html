@@ -26,7 +26,7 @@
                     <h3 class="card-title"><i class="bi bi-chat-square-quote me-2"></i>Set Debate Topic</h3>
                     <div class="input-group mb-2">
                         <input type="text" id="topic-input" class="form-control" placeholder="e.g., climate change, AI ethics, space exploration">
-                        <button id="set-topic-btn" class="btn btn-primary">
+                        <button id="set-topic-btn" class="btn btn-primary ms-md-2">
                             <i class="bi bi-check-circle me-1"></i>Set Topic
                         </button>
                     </div>
@@ -56,7 +56,8 @@
             <div class="debate-arena">
                 <div class="participants">
                     <div class="participant against">
-                        <div class="participant-label" id="against-position">Against position</div>
+                        <i class="bi bi-x-circle-fill"></i>
+                        <div class="participant-label" id="against-position">Against</div>
                         <div class="typing-indicator against-typing" id="against-typing">
                             <span class="dot"></span>
                             <span class="dot"></span>
@@ -65,7 +66,8 @@
                     </div>
                     <div class="vs-badge">VS</div>
                     <div class="participant for">
-                        <div class="participant-label" id="for-position">For position</div>
+                        <i class="bi bi-check-circle-fill"></i>
+                        <div class="participant-label" id="for-position">For</div>
                         <div class="typing-indicator for-typing" id="for-typing">
                             <span class="dot"></span>
                             <span class="dot"></span>
@@ -90,3 +92,4 @@
     <script src="/static/js/main.js"></script>
 </body>
 </html>
+``` 
