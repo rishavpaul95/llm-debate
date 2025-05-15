@@ -31,7 +31,7 @@ body {
 }
 
 .debate-container {
-    max-width: 1100px;
+    max-width: 95dvw;
     margin: 0 auto;
     background-color: white;
     border-radius: 10px;
