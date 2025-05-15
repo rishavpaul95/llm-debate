@@ -3,6 +3,7 @@ import requests
 from flask_socketio import SocketIO
 import threading
 import time
+import json
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -25,7 +26,7 @@ def generate_system_prompts(topic):
     return for_prompt, against_prompt
 
 def generate_response(prompt, endpoint_url, is_for_position=True):
-    """Get a response from one of the Ollama instances"""
+    """Get a response from one of the Ollama instances using streaming"""
     headers = {"Content-Type": "application/json"}
     
     # Get appropriate system prompts based on the current topic
@@ -42,19 +43,67 @@ def generate_response(prompt, endpoint_url, is_for_position=True):
         "model": "gemma3:4b",
         "prompt": prompt,
         "system": system_prompt,
-        "stream": False,
+        "stream": True,
         "max_tokens": 350  # Limit output to about 4 paragraphs (approx. 350 tokens)
     }
     
-    response = requests.post(endpoint_url, headers=headers, json=data)
+    # Create a unique message ID for this streaming response
+    message_id = f"{int(time.time() * 1000)}-{speaker}"
+    full_response = ""
+    
+    try:
+        with requests.post(endpoint_url, headers=headers, json=data, stream=True) as response:
+            if response.status_code != 200:
+                # Handle error case
+                error_msg = f"Error: {response.status_code} - {response.text}"
+                socketio.emit('stream_message', {
+                    "speaker": speaker,
+                    "message": error_msg,
+                    "message_id": message_id,
+                    "done": True
+                })
+                return error_msg
+            
+            # Process the streaming response
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line)
+                        if 'response' in chunk:
+                            chunk_text = chunk['response']
+                            full_response += chunk_text
+                            
+                            # Emit the chunk to the frontend
+                            socketio.emit('stream_message', {
+                                "speaker": speaker,
+                                "message": chunk_text,
+                                "message_id": message_id,
+                                "done": chunk.get('done', False)
+                            })
+                            
+                            # Add a small sleep to prevent overwhelming the frontend
+                            time.sleep(0.01)
+                        
+                        # If this is the last chunk, break the loop
+                        if chunk.get('done', False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+    except Exception as e:
+        error_msg = f"Error: {str(e)}"
+        socketio.emit('stream_message', {
+            "speaker": speaker,
+            "message": error_msg,
+            "message_id": message_id,
+            "done": True
+        })
+        return error_msg
     
     # Notify clients that typing has stopped
     socketio.emit('typing_indicator', {"speaker": speaker, "typing": False})
     
-    if response.status_code == 200:
-        return response.json().get("response", "")
-    else:
-        return f"Error: {response.status_code} - {response.text}"
+    return full_response
 
 def conversation_loop():
     """Function to run the conversation between the two LLMs"""
@@ -76,7 +125,7 @@ def conversation_loop():
         response1 = generate_response(prompt, OLLAMA1_URL, is_for_position=False)
         message1 = {"speaker": against_position_label, "message": response1}
         conversation.append(message1)
-        socketio.emit('new_message', message1)
+        # No need to emit new_message here as it's handled by the streaming process
         
         if not conversation_active:
             break
@@ -90,7 +139,7 @@ def conversation_loop():
         response2 = generate_response(prompt, OLLAMA2_URL, is_for_position=True)
         message2 = {"speaker": for_position_label, "message": response2}
         conversation.append(message2)
-        socketio.emit('new_message', message2)
+        # No need to emit new_message here as it's handled by the streaming process
         
         turns += 1
         time.sleep(1)  # Small delay between turns

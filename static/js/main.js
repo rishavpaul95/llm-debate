@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentAgainstLabel = "Against position";
     let messageDelay = 0; // Used for staggered animation timing
     
+    // Store active streaming messages
+    let activeStreamingMessages = {};
+    
     // Connect to WebSocket
     socket.on('connect', function() {
         console.log('Connected to WebSocket');
@@ -58,7 +61,48 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Handle new messages with staggered animation
+    // Handle streaming message updates
+    socket.on('stream_message', function(data) {
+        const { speaker, message, message_id, done } = data;
+        
+        // If this is a new streaming message, create a new message element
+        if (!activeStreamingMessages[message_id]) {
+            // Create new message container
+            const messageDiv = createMessageElement(speaker, "", message_id);
+            conversation.appendChild(messageDiv);
+            
+            // Store reference to content span for future updates
+            activeStreamingMessages[message_id] = {
+                element: messageDiv,
+                contentSpan: messageDiv.querySelector('.content'),
+                fullText: ""
+            };
+            
+            // Auto scroll to bottom with smooth animation
+            conversation.scrollTo({
+                top: conversation.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+        
+        // Update the existing message with new content
+        const streamingMsg = activeStreamingMessages[message_id];
+        streamingMsg.fullText += message;
+        streamingMsg.contentSpan.textContent = streamingMsg.fullText;
+        
+        // Auto scroll to keep up with the message
+        conversation.scrollTo({
+            top: conversation.scrollHeight,
+            behavior: 'smooth'
+        });
+        
+        // If this is the last chunk, remove from active streaming messages
+        if (done) {
+            delete activeStreamingMessages[message_id];
+        }
+    });
+    
+    // Handle legacy (non-streaming) new messages with staggered animation
     socket.on('new_message', function(data) {
         messageDelay += 100; // Stagger animations
         setTimeout(() => {
@@ -67,18 +111,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }, messageDelay);
     });
     
-    function addMessageToDisplay(data) {
+    function createMessageElement(speaker, initialContent, messageId) {
         const messageDiv = document.createElement('div');
         
         // Determine CSS class based on speaker
         let speakerClass = '';
-        if (data.speaker === 'Human') {
+        if (speaker === 'Human') {
             speakerClass = 'human';
-        } else if (data.speaker === currentForLabel || data.speaker.includes('For ')) {
+        } else if (speaker === currentForLabel || speaker.includes('For ')) {
             speakerClass = 'for-position';
             // Ensure typing indicator is hidden when message arrives
             forTyping.classList.remove('visible');
-        } else if (data.speaker === currentAgainstLabel || data.speaker.includes('Against ')) {
+        } else if (speaker === currentAgainstLabel || speaker.includes('Against ')) {
             speakerClass = 'against-position';
             // Ensure typing indicator is hidden when message arrives
             againstTyping.classList.remove('visible');
@@ -88,17 +132,26 @@ document.addEventListener('DOMContentLoaded', function() {
         
         messageDiv.className = `message ${speakerClass}`;
         messageDiv.style.animationDelay = `${messageDelay}ms`;
+        if (messageId) {
+            messageDiv.dataset.messageId = messageId;
+        }
         
         const speakerSpan = document.createElement('span');
         speakerSpan.className = 'speaker';
-        speakerSpan.textContent = data.speaker;
+        speakerSpan.textContent = speaker;
         
         const contentSpan = document.createElement('span');
         contentSpan.className = 'content';
-        contentSpan.textContent = data.message;
+        contentSpan.textContent = initialContent;
         
         messageDiv.appendChild(speakerSpan);
         messageDiv.appendChild(contentSpan);
+        
+        return messageDiv;
+    }
+    
+    function addMessageToDisplay(data) {
+        const messageDiv = createMessageElement(data.speaker, data.message);
         conversation.appendChild(messageDiv);
         
         // Auto scroll to bottom with smooth animation
