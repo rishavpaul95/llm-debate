@@ -39,7 +39,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const evaluatorTyping = document.createElement('div'); // Create a new typing indicator for evaluator
     evaluatorTyping.id = 'evaluator-typing';
     evaluatorTyping.className = 'typing-indicator evaluator-typing'; // Add new class
-    evaluatorTyping.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+    
+    const evaluatingText = document.createElement('span');
+    evaluatingText.className = 'evaluating-text';
+    evaluatingText.textContent = 'Evaluating';
+    evaluatorTyping.appendChild(evaluatingText);
+    
+    evaluatorTyping.innerHTML += '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
     const debateArena = document.querySelector('.debate-arena');
     if (debateArena) {
         const conversationContainer = document.getElementById('conversation');

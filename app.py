@@ -7,6 +7,7 @@ import json
 import uuid
 from collections import defaultdict
 import sys # For sys.exit
+import re # Import regular expressions module
 
 # Import the Docker initialization script
 from initialize_docker import initialize_ollama_services, list_models_in_container, pull_model_in_container as pull_docker_model, delete_model_from_container, DEFAULT_MODEL_NAME
@@ -219,11 +220,12 @@ def evaluate_debate(session_id):
             return
         session_data = sessions[session_id]
         conversation_history = session_data['conversation']
+        for_label_dynamic = session_data['for_position_label']
+        against_label_dynamic = session_data['against_position_label']
         # Ensure no active debate during evaluation to prevent race conditions
         if session_data['active']: 
             print(f"Warning: evaluate_debate called for session {session_id} while still active.")
             return
-
 
     # Announce evaluation phase
     system_message_text = "The debate has concluded. An impartial evaluator will now determine the winner and provide an analysis."
@@ -240,11 +242,31 @@ def evaluate_debate(session_id):
 
     # Prepare conversation text for the evaluator
     # Exclude the "System" announcement message itself from the text sent for evaluation
-    debate_text_for_evaluator = "\n\n".join([
-        f"{msg['speaker']}: {msg['message']}" 
-        for msg in conversation_history 
-        if msg['speaker'] != "System" # Exclude system messages from evaluation content
-    ])
+    # Filter out <think> tags and rename speakers
+    
+    processed_messages_for_eval = []
+    for msg in conversation_history:
+        if msg['speaker'] == "System": # Exclude system messages from evaluation content
+            continue
+
+        # Filter out <think>...</think> content
+        message_content = msg['message']
+        if isinstance(message_content, str): # Ensure it's a string before regex
+            message_content_no_thoughts = re.sub(r"<think>.*?</think>", "", message_content, flags=re.DOTALL).strip()
+        else:
+            message_content_no_thoughts = "" # Or handle as an error/empty if not string
+
+        # Determine speaker name for the transcript
+        speaker_for_transcript = msg['speaker']
+        if msg['speaker'] == for_label_dynamic:
+            speaker_for_transcript = "For Debator"
+        elif msg['speaker'] == against_label_dynamic:
+            speaker_for_transcript = "Against Debator"
+        
+        if message_content_no_thoughts: # Only add if there's content after stripping thoughts
+            processed_messages_for_eval.append(f"{speaker_for_transcript}: {message_content_no_thoughts}")
+
+    debate_text_for_evaluator = "\n\n".join(processed_messages_for_eval)
     
     if not debate_text_for_evaluator.strip():
         print(f"No debate content to evaluate for session {session_id}.")
@@ -293,7 +315,7 @@ def conversation_loop(session_id):
                 socketio.emit('new_message', {"speaker": "Human", "message": prompt}, room=session_id)
     
     turns = 0
-    max_turns = 3 # Define max_turns for clarity
+    max_turns = 1 # Define max_turns for clarity
     
     while True:
         with session_lock:

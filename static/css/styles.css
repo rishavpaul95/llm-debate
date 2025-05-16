@@ -442,6 +442,11 @@ body {
     justify-content: center; /* Center it if it's a block element */
     margin-top: 1rem; /* Add some space if it's displayed outside conversation */
     margin-bottom: 1rem;
+    color: var(--primary-color); /* Match evaluator message color for text */
+    font-style: italic;
+}
+.evaluator-typing .evaluating-text {
+    margin-right: 0.5rem; /* Space between text and dots */
 }
 .evaluator-typing .dot {
     background-color: var(--primary-color); /* Match evaluator message color */
