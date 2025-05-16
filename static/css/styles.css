@@ -422,6 +422,34 @@ body {
     animation-delay: 0.4s;
 }
 
+/* Inline thinking indicator within a message bubble */
+.thinking-indicator-inline {
+    display: inline-flex; /* Or 'flex' if it's on its own line */
+    align-items: baseline; /* Align text and dots nicely */
+    font-style: italic;
+    /* margin-left: 5px; */ /* Optional spacing if next to text */
+}
+
+.thinking-indicator-inline .dot {
+    width: 5px; /* Slightly larger or different for distinction */
+    height: 5px;
+    border-radius: 50%;
+    margin: 0 2px;
+    animation: typing-animation 1.4s infinite; /* Can reuse existing animation */
+    opacity: 0.7;
+    /* Dots can inherit color from parent message or be set explicitly */
+}
+
+.message.for-position .thinking-indicator-inline .dot {
+    background-color: var(--for-color);
+}
+.message.against-position .thinking-indicator-inline .dot {
+    background-color: var(--against-color);
+}
+.message.generic-llm .thinking-indicator-inline .dot { /* Fallback if needed */
+    background-color: var(--gray-text);
+}
+
 @keyframes typing-animation {
     0%, 60%, 100% {
         transform: translateY(0);

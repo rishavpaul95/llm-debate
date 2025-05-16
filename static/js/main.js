@@ -213,53 +213,73 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle streaming message updates
     socket.on('stream_message', function(data) {
-        const { speaker, message, message_id, done } = data;
-        
-        // If this is a new streaming message, create a new message element
-        if (!activeStreamingMessages[message_id]) {
-            // Check if user is at bottom before adding new message
+        const { speaker, message: chunk_text, message_id, done } = data;
+        let msgData = activeStreamingMessages[message_id];
+    
+        if (!msgData) {
             isNearBottom = isScrolledNearBottom();
-            
-            // Create new message container
             const messageDiv = createMessageElement(speaker, "", message_id);
             conversation.appendChild(messageDiv);
             
-            // Store reference to content span for future updates
-            activeStreamingMessages[message_id] = {
+            msgData = {
                 element: messageDiv,
                 contentSpan: messageDiv.querySelector('.content'),
-                fullText: ""
+                thinkingSpan: messageDiv.querySelector('.thinking-indicator-inline'),
+                isCurrentlyThinking: false,
+                fullText: "" // Stores only the actual response text to be displayed
             };
-            
-            // Smart scroll
+            activeStreamingMessages[message_id] = msgData;
             smartScroll();
         }
+    
+        let processText = chunk_text;
+    
+        while (processText.length > 0) {
+            if (msgData.isCurrentlyThinking) {
+                const thinkEndIndex = processText.indexOf('</think>');
+                if (thinkEndIndex !== -1) {
+                    msgData.isCurrentlyThinking = false;
+                    msgData.thinkingSpan.style.display = 'none';
+                    processText = processText.substring(thinkEndIndex + '</think>'.length);
+                } else {
+                    processText = ""; // Consume the rest of this chunk's thought
+                }
+            } else { // Not currently thinking
+                const thinkStartIndex = processText.indexOf('<think>');
+                if (thinkStartIndex !== -1) {
+                    const regularText = processText.substring(0, thinkStartIndex);
+                    if (regularText.length > 0) {
+                        msgData.fullText += regularText;
+                        msgData.contentSpan.textContent = msgData.fullText;
+                    }
+    
+                    msgData.isCurrentlyThinking = true;
+                    msgData.thinkingSpan.style.display = 'inline-flex'; // Show thinking indicator
+                    processText = processText.substring(thinkStartIndex + '<think>'.length);
+                } else {
+                    if (processText.length > 0) {
+                        msgData.fullText += processText;
+                        msgData.contentSpan.textContent = msgData.fullText;
+                    }
+                    processText = "";
+                }
+            }
+        }
         
-        // Update the existing message with new content
-        const streamingMsg = activeStreamingMessages[message_id];
-        streamingMsg.fullText += message;
-        streamingMsg.contentSpan.textContent = streamingMsg.fullText;
-        
-        // Smart scroll for content updates
+        if (!msgData.isCurrentlyThinking) {
+            msgData.contentSpan.style.display = 'inline';
+        }
+
         smartScroll();
-        
-        // If this is the last chunk, remove from active streaming messages
+    
         if (done) {
+            if (msgData.isCurrentlyThinking) { // If stream ends mid-thought
+                msgData.thinkingSpan.style.display = 'none';
+                msgData.contentSpan.style.display = 'inline';
+            }
+            msgData.contentSpan.textContent = msgData.fullText; 
             delete activeStreamingMessages[message_id];
         }
-    });
-    
-    // Handle legacy (non-streaming) new messages with staggered animation
-    socket.on('new_message', function(data) {
-        messageDelay += 100; // Stagger animations
-        
-        // Check if user is at bottom before scheduling the new message
-        isNearBottom = isScrolledNearBottom();
-        
-        setTimeout(() => {
-            addMessageToDisplay(data);
-            messageDelay = 0; // Reset after a pause
-        }, messageDelay);
     });
     
     function createMessageElement(speaker, initialContent, messageId) {
@@ -271,11 +291,9 @@ document.addEventListener('DOMContentLoaded', function() {
             speakerClass = 'human';
         } else if (speaker === currentForLabel || speaker.includes('For ')) {
             speakerClass = 'for-position';
-            // Ensure typing indicator is hidden when message arrives
             forTyping.classList.remove('visible');
         } else if (speaker === currentAgainstLabel || speaker.includes('Against ')) {
             speakerClass = 'against-position';
-            // Ensure typing indicator is hidden when message arrives
             againstTyping.classList.remove('visible');
         } else {
             speakerClass = 'generic-llm'; // Fallback
@@ -294,9 +312,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const contentSpan = document.createElement('span');
         contentSpan.className = 'content';
         contentSpan.textContent = initialContent;
+
+        const thinkingSpan = document.createElement('span');
+        thinkingSpan.className = 'thinking-indicator-inline'; // New class for inline thinking
+        thinkingSpan.style.display = 'none'; // Hidden by default
+        
+        const thinkingText = document.createTextNode('Thinking'); // Add "Thinking" text
+        thinkingSpan.appendChild(thinkingText);
+
+        const dot1 = document.createElement('span'); dot1.className = 'dot';
+        const dot2 = document.createElement('span'); dot2.className = 'dot';
+        const dot3 = document.createElement('span'); dot3.className = 'dot';
+        thinkingSpan.append(dot1, dot2, dot3);
         
         messageDiv.appendChild(speakerSpan);
         messageDiv.appendChild(contentSpan);
+        messageDiv.appendChild(thinkingSpan); // Add the thinking indicator
         
         return messageDiv;
     }
