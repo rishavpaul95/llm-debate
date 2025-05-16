@@ -319,6 +319,9 @@ def delete_model_api():
     if not instance_name or not model_to_delete:
         return jsonify({"status": "error", "message": "Instance name and model name are required"}), 400
 
+    if model_to_delete == DEFAULT_MODEL_NAME:
+        return jsonify({"status": "error", "message": f"Cannot delete the default model '{DEFAULT_MODEL_NAME}'. Please select a different model to delete."}), 400
+
     if session_id_req and session_id_req in sessions:
         with session_lock:
             if sessions[session_id_req].get('active', False):

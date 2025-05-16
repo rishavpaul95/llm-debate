@@ -427,20 +427,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     badge.className = 'badge bg-info rounded-pill me-2';
                     badge.textContent = 'Default';
                     controlsDiv.appendChild(badge);
+                } else {
+                    // Only add delete button if it's NOT the default model
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-sm btn-outline-danger delete-model-btn';
+                    deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                    deleteBtn.title = `Delete ${model}`;
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation(); // Prevent li click if any
+                        if (confirm(`Are you sure you want to delete model "${model}" from ${instanceName === 'ollama1' ? 'For LLM' : 'Against LLM'}?`)) {
+                            deleteModel(instanceName, model);
+                        }
+                    };
+                    controlsDiv.appendChild(deleteBtn);
                 }
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn btn-sm btn-outline-danger delete-model-btn';
-                deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
-                deleteBtn.title = `Delete ${model}`;
-                deleteBtn.onclick = (e) => {
-                    e.stopPropagation(); // Prevent li click if any
-                    if (confirm(`Are you sure you want to delete model "${model}" from ${instanceName === 'ollama1' ? 'For LLM' : 'Against LLM'}?`)) {
-                        deleteModel(instanceName, model);
-                    }
-                };
-                controlsDiv.appendChild(deleteBtn);
-                li.appendChild(controlsDiv);
+                
+                // Append controlsDiv only if it has children (either badge or button)
+                if (controlsDiv.hasChildNodes()) {
+                    li.appendChild(controlsDiv);
+                }
                 listElement.appendChild(li);
 
                 const option = document.createElement('option');
