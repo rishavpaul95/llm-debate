@@ -8,6 +8,7 @@ import uuid
 from collections import defaultdict
 import sys # For sys.exit
 import re # Import regular expressions module
+import random # Import random module
 
 # Import the Docker initialization script
 from initialize_docker import initialize_ollama_services, list_models_in_container, pull_model_in_container as pull_docker_model, delete_model_from_container, DEFAULT_MODEL_NAME
@@ -315,7 +316,7 @@ def conversation_loop(session_id):
                 socketio.emit('new_message', {"speaker": "Human", "message": prompt}, room=session_id)
     
     turns = 0
-    max_turns = 1 # Define max_turns for clarity
+    max_turns = 1 # Define max_turns for clarity (number of full exchanges)
     
     while True:
         with session_lock:
@@ -328,51 +329,71 @@ def conversation_loop(session_id):
         if turns >= max_turns: # Use max_turns
             break
         
-        last_messages = " ".join([msg["message"] for msg in conversation[-3:] if msg])
-        prompt = f"Continue this conversation about {topic}: {last_messages}"
-        
-        # "For" LLM's turn (Instance 1)
-        response_for = generate_response(prompt, session_id, selected_for_model, selected_against_model, is_for_position=True)
-        
-        with session_lock:
-            if session_id not in sessions or not sessions[session_id]['active']:
-                break
+        # Randomize who goes first in this exchange
+        for_goes_first_this_exchange = random.choice([True, False])
+
+        if for_goes_first_this_exchange:
+            # "For" LLM's turn (Instance 1)
+            last_messages_for = " ".join([msg["message"] for msg in conversation[-3:] if msg])
+            prompt_for = f"Continue this conversation about {topic}: {last_messages_for}"
+            response_for = generate_response(prompt_for, session_id, selected_for_model, selected_against_model, is_for_position=True)
             
-            message_for = {
-                "speaker": for_position_label, 
-                "message": response_for,
-                "timestamp": time.time()
-            }
-            sessions[session_id]['conversation'].append(message_for)
-        
-        time.sleep(1)
-        
-        with session_lock:
-            if session_id not in sessions or not sessions[session_id]['active']:
-                break
+            with session_lock:
+                if session_id not in sessions or not sessions[session_id]['active']:
+                    break
+                message_for = { "speaker": for_position_label, "message": response_for, "timestamp": time.time() }
+                sessions[session_id]['conversation'].append(message_for)
+                # Update conversation variable for the next speaker
+                conversation = sessions[session_id]['conversation'] 
             
-            conversation = sessions[session_id]['conversation']
-            topic = sessions[session_id]['topic']
-        
-        last_messages = " ".join([msg["message"] for msg in conversation[-3:] if msg])
-        prompt = f"Continue this conversation about {topic}: {last_messages}"
-        
-        # "Against" LLM's turn (Instance 2)
-        response_against = generate_response(prompt, session_id, selected_for_model, selected_against_model, is_for_position=False)
-        
-        with session_lock:
-            if session_id not in sessions or not sessions[session_id]['active']:
-                break
+            time.sleep(0.2) # Shorter delay between speakers in an exchange
+
+            # "Against" LLM's turn (Instance 2)
+            with session_lock: # Re-check session status before Against's turn
+                if session_id not in sessions or not sessions[session_id]['active']:
+                    break
+            last_messages_against = " ".join([msg["message"] for msg in conversation[-3:] if msg])
+            prompt_against = f"Continue this conversation about {topic}: {last_messages_against}"
+            response_against = generate_response(prompt_against, session_id, selected_for_model, selected_against_model, is_for_position=False)
             
-            message_against = {
-                "speaker": against_position_label, 
-                "message": response_against,
-                "timestamp": time.time()
-            }
-            sessions[session_id]['conversation'].append(message_against)
-        
+            with session_lock:
+                if session_id not in sessions or not sessions[session_id]['active']:
+                    break
+                message_against = { "speaker": against_position_label, "message": response_against, "timestamp": time.time() }
+                sessions[session_id]['conversation'].append(message_against)
+
+        else: # Against goes first this exchange
+            # "Against" LLM's turn (Instance 2)
+            last_messages_against = " ".join([msg["message"] for msg in conversation[-3:] if msg])
+            prompt_against = f"Continue this conversation about {topic}: {last_messages_against}"
+            response_against = generate_response(prompt_against, session_id, selected_for_model, selected_against_model, is_for_position=False)
+
+            with session_lock:
+                if session_id not in sessions or not sessions[session_id]['active']:
+                    break
+                message_against = { "speaker": against_position_label, "message": response_against, "timestamp": time.time() }
+                sessions[session_id]['conversation'].append(message_against)
+                # Update conversation variable for the next speaker
+                conversation = sessions[session_id]['conversation']
+
+            time.sleep(0.2) # Shorter delay between speakers in an exchange
+
+            # "For" LLM's turn (Instance 1)
+            with session_lock: # Re-check session status before For's turn
+                if session_id not in sessions or not sessions[session_id]['active']:
+                    break
+            last_messages_for = " ".join([msg["message"] for msg in conversation[-3:] if msg])
+            prompt_for = f"Continue this conversation about {topic}: {last_messages_for}"
+            response_for = generate_response(prompt_for, session_id, selected_for_model, selected_against_model, is_for_position=True)
+            
+            with session_lock:
+                if session_id not in sessions or not sessions[session_id]['active']:
+                    break
+                message_for = { "speaker": for_position_label, "message": response_for, "timestamp": time.time() }
+                sessions[session_id]['conversation'].append(message_for)
+
         turns += 1
-        time.sleep(1)
+        time.sleep(1) # Delay after a full exchange
     
     # After the loop finishes
     with session_lock:
