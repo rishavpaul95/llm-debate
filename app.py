@@ -6,6 +6,10 @@ import time
 import json
 import uuid
 from collections import defaultdict
+import sys # For sys.exit
+
+# Import the Docker initialization script
+from initialize_docker import initialize_ollama_services
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'llm-debate-secret-key'  # Needed for session management
@@ -442,6 +446,12 @@ def handle_disconnect():
     leave_room(session_id)
 
 if __name__ == '__main__':
-    print("Starting LLM Debate Application...")
-    print("Server running on http://127.0.0.1:5000")
+    print("Attempting to initialize Docker services for Ollama...")
+    if not initialize_ollama_services():
+        print("Failed to initialize Docker services. Please check Docker is running and configured correctly.")
+        print("Exiting application.")
+        sys.exit(1)
+    
+    print("Docker services initialized. Starting LLM Debate Application...")
+    print("Server running on http://localhost:5000")
     socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

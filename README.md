@@ -2,49 +2,35 @@
 
 This application creates a debate between two LLMs with opposing viewpoints on any topic you choose. Simply enter your topic, and the LLMs will take opposing positions in a real-time debate.
 
+## Prerequisites
+
+- **Docker**: Ensure Docker is installed and the Docker daemon is running on your system. The user running the application should have permissions to interact with Docker.
+- **GPU (Recommended for Ollama)**: For optimal performance with Ollama, a compatible GPU and necessary drivers (e.g., NVIDIA drivers for `--gpus=all`) should be installed.
+
 ## Setup Instructions
 
-### 1. Docker Setup
-
-First, start two Ollama containers on different ports:
-
+### 1. Clone the Repository (if you haven't already)
 ```bash
-# Start the first container (Against position LLM)
-docker run -d --gpus=all -v ollama:/root/.ollama -p 3001:11434 --name ollama ollama/ollama
-
-# Start the second container (For position LLM) 
-docker run -d --gpus=all -v ollama:/root/.ollama -p 3002:11434 --name ollama2 ollama/ollama
+# git clone <repository_url>
+# cd <repository_directory>
 ```
 
-### 2. Set Up the Models
-
-Run the following commands to initialize both LLMs:
-
-```bash
-# Enter the first container
-docker exec -it ollama ollama run gemma3:4b
-
-# Exit the Ollama prompt (it will automatically be configured by the app)
-exit
-
-# Enter the second container
-docker exec -it ollama2 ollama run gemma3:4b
-
-# Exit the Ollama prompt (it will automatically be configured by the app)
-exit
-```
-
-### 3. Run the Flask Application
-
-Install requirements and start the application:
-
+### 2. Install Python Dependencies
 ```bash
 # Install required Python packages
 pip install -r requirements.txt
+```
 
+### 3. Run the Flask Application
+```bash
 # Start the Flask application
 python app.py
 ```
+The application will automatically attempt to:
+- Start two Ollama Docker containers (`ollama` on host port 3001 and `ollama2` on host port 3002) if they are not already running.
+- Pull the `gemma3:4b` model into each container if it's not already present. (Note: `gemma3:4b` is used as per original setup; if this model name is incorrect or unavailable, you can adjust `MODEL_NAME` in `initialize_docker.py`).
+
+If Docker is not running or there are issues with the setup, the script will output error messages.
 
 ### 4. Access the Application
 
@@ -85,6 +71,7 @@ Try these topics for interesting debates:
 - **Responsive Design**: Works on desktops, tablets, and mobile devices
 - **Visual Differentiation**: Each side of the debate has distinct visual styling
 - **Message Ordering**: Messages are always presented in the correct chronological order
+- **Automated Docker Setup**: The application attempts to initialize required Docker containers and Ollama models on startup.
 
 ## Technical Details
 
@@ -108,3 +95,33 @@ The system ensures that each LLM maintains its assigned perspective throughout t
 - Chrome, Firefox, Safari, Edge (latest versions)
 - Works on desktop and mobile devices
 - Maintains session state across page refreshes and browser restarts
+
+## Manual Docker Management (Optional)
+
+If you prefer to manage Docker containers manually or troubleshoot, here are the commands the script attempts to automate:
+
+**Named Volumes (created automatically by the script):**
+- `ollama_data` (for `ollama` container)
+- `ollama2_data` (for `ollama2` container)
+
+**To start containers manually:**
+```bash
+# Create volumes if they don't exist
+docker volume create ollama_data
+docker volume create ollama2_data
+
+# Start the first container (Against position LLM)
+docker run -d --gpus=all -v ollama_data:/root/.ollama -p 3001:11434 --name ollama ollama/ollama
+
+# Start the second container (For position LLM) 
+docker run -d --gpus=all -v ollama2_data:/root/.ollama -p 3002:11434 --name ollama2 ollama/ollama
+```
+
+**To pull models manually into containers:**
+```bash
+# Pull model into the first container
+docker exec ollama ollama pull gemma3:4b
+
+# Pull model into the second container
+docker exec ollama2 ollama pull gemma3:4b
+```
