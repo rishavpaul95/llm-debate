@@ -9,35 +9,37 @@ from collections import defaultdict
 import sys # For sys.exit
 
 # Import the Docker initialization script
-from initialize_docker import initialize_ollama_services
+from initialize_docker import initialize_ollama_services, list_models_in_container, pull_model_in_container as pull_docker_model, delete_model_from_container, DEFAULT_MODEL_NAME
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'llm-debate-secret-key'  # Needed for session management
-# Change async_mode to threading for Python 3.12 compatibility
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
-# Configuration for the two Ollama endpoints
-OLLAMA1_URL = "http://localhost:3001/api/generate"
-OLLAMA2_URL = "http://localhost:3002/api/generate"
+# For LLM -> Ollama Instance 1 (ollama, port 3001)
+# Against LLM -> Ollama Instance 2 (ollama2, port 3002)
+OLLAMA_FOR_URL = "http://localhost:3001/api/generate" # Instance 1 for "For"
+OLLAMA_AGAINST_URL = "http://localhost:3002/api/generate" # Instance 2 for "Against"
+OLLAMA_FOR_CONTAINER_NAME = "ollama"
+OLLAMA_AGAINST_CONTAINER_NAME = "ollama2"
 
-# Session-based storage for conversations
 sessions = {}
-
-# Lock for thread safety when accessing sessions
 session_lock = threading.Lock()
-
-# Map Flask session IDs to SocketIO session IDs for persistence
 flask_to_socketio_map = {}
 
+# Global flag to indicate if a long Ollama operation (pull/delete) is in progress
+is_long_ollama_operation_active = False
+long_op_lock = threading.Lock()
+
+USER_SPECIFIED_PULLABLE_MODELS = ["qwen3:4b", "llama3.2:3b", "qwen2.5vl:3b"]
+PULLABLE_MODELS_LIST = [m for m in USER_SPECIFIED_PULLABLE_MODELS if m != DEFAULT_MODEL_NAME]
+
 def generate_system_prompts(topic):
-    """Generate appropriate system prompts based on the topic"""
     for_prompt = f"You are a strong supporter and will always argue FOR {topic}. Present compelling arguments supporting this position."
     against_prompt = f"You are strongly opposed and will always argue AGAINST {topic}. Present compelling arguments opposing this position."
     return for_prompt, against_prompt
 
-def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
+def generate_response(prompt, session_id, for_model_name, against_model_name, is_for_position=True):
     """Get a response from one of the Ollama instances using streaming"""
-    # Get session data
     with session_lock:
         if session_id not in sessions:
             return "Session expired"
@@ -45,35 +47,37 @@ def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
         topic = session_data['topic']
         for_position_label = session_data['for_position_label']
         against_position_label = session_data['against_position_label']
-    
+        
+    # Determine endpoint and model based on position
+    if is_for_position:
+        endpoint_url = OLLAMA_FOR_URL
+        current_model_name = for_model_name
+        speaker = for_position_label
+    else: # Against position
+        endpoint_url = OLLAMA_AGAINST_URL
+        current_model_name = against_model_name
+        speaker = against_position_label
+            
     headers = {"Content-Type": "application/json"}
-    
-    # Get appropriate system prompts based on the current topic
     for_prompt, against_prompt = generate_system_prompts(topic)
-    
-    # Define system prompts based on which LLM we're calling
     system_prompt = for_prompt if is_for_position else against_prompt
     
-    # Notify clients that typing has started
-    speaker = for_position_label if is_for_position else against_position_label
     socketio.emit('typing_indicator', {"speaker": speaker, "typing": True}, room=session_id)
     
     data = {
-        "model": "gemma3:4b",
+        "model": current_model_name,
         "prompt": prompt,
         "system": system_prompt,
         "stream": True,
-        "max_tokens": 350  # Limit output to about 4 paragraphs (approx. 350 tokens)
+        "max_tokens": 350
     }
     
-    # Create a unique message ID for this streaming response
     message_id = f"{int(time.time() * 1000)}-{speaker}"
     full_response = ""
     
     try:
         with requests.post(endpoint_url, headers=headers, json=data, stream=True) as response:
             if response.status_code != 200:
-                # Handle error case
                 error_msg = f"Error: {response.status_code} - {response.text}"
                 socketio.emit('stream_message', {
                     "speaker": speaker,
@@ -83,7 +87,6 @@ def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
                 }, room=session_id)
                 return error_msg
             
-            # Process the streaming response
             for line in response.iter_lines():
                 if line:
                     try:
@@ -92,12 +95,10 @@ def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
                             chunk_text = chunk['response']
                             full_response += chunk_text
                             
-                            # Verify session still exists
                             with session_lock:
                                 if session_id not in sessions:
                                     break
                             
-                            # Emit the chunk to the frontend
                             socketio.emit('stream_message', {
                                 "speaker": speaker,
                                 "message": chunk_text,
@@ -105,10 +106,8 @@ def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
                                 "done": chunk.get('done', False)
                             }, room=session_id)
                             
-                            # Add a small sleep to prevent overwhelming the frontend
                             time.sleep(0.01)
                         
-                        # If this is the last chunk, break the loop
                         if chunk.get('done', False):
                             break
                     except json.JSONDecodeError:
@@ -116,7 +115,6 @@ def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
 
     except Exception as e:
         error_msg = f"Error: {str(e)}"
-        # Verify session still exists
         with session_lock:
             if session_id in sessions:
                 socketio.emit('stream_message', {
@@ -127,7 +125,6 @@ def generate_response(prompt, endpoint_url, session_id, is_for_position=True):
                 }, room=session_id)
         return error_msg
     
-    # Notify clients that typing has stopped
     with session_lock:
         if session_id in sessions:
             socketio.emit('typing_indicator', {"speaker": speaker, "typing": False}, room=session_id)
@@ -139,19 +136,18 @@ def conversation_loop(session_id):
     with session_lock:
         if session_id not in sessions:
             return
-        
         session_data = sessions[session_id]
         conversation = session_data['conversation']
         topic = session_data['topic']
         for_position_label = session_data['for_position_label']
         against_position_label = session_data['against_position_label']
-    
-    # Initial prompt only if conversation is empty
+        selected_for_model = session_data.get('selected_for_model', DEFAULT_MODEL_NAME)
+        selected_against_model = session_data.get('selected_against_model', DEFAULT_MODEL_NAME)
+
     if not conversation:
         prompt = f"Hello! Let's discuss {topic} today."
         with session_lock:
             if session_id in sessions:
-                # Add timestamp to ensure proper ordering
                 sessions[session_id]['conversation'].append({
                     "speaker": "Human", 
                     "message": prompt,
@@ -162,7 +158,6 @@ def conversation_loop(session_id):
     turns = 0
     
     while True:
-        # Check if the session still exists or has been stopped
         with session_lock:
             if session_id not in sessions or not sessions[session_id]['active']:
                 break
@@ -170,31 +165,28 @@ def conversation_loop(session_id):
             conversation = sessions[session_id]['conversation']
             topic = sessions[session_id]['topic']
         
-        # Limit to 10 turns to prevent infinite loop
         if turns >= 10:
             break
         
-        # LLM 1's turn (Against position)
         last_messages = " ".join([msg["message"] for msg in conversation[-3:] if msg])
         prompt = f"Continue this conversation about {topic}: {last_messages}"
         
-        response1 = generate_response(prompt, OLLAMA1_URL, session_id, is_for_position=False)
+        # "For" LLM's turn (Instance 1)
+        response_for = generate_response(prompt, session_id, selected_for_model, selected_against_model, is_for_position=True)
         
-        # Check if session still exists
         with session_lock:
             if session_id not in sessions or not sessions[session_id]['active']:
                 break
             
-            message1 = {
-                "speaker": against_position_label, 
-                "message": response1,
+            message_for = {
+                "speaker": for_position_label, 
+                "message": response_for,
                 "timestamp": time.time()
             }
-            sessions[session_id]['conversation'].append(message1)
+            sessions[session_id]['conversation'].append(message_for)
         
-        time.sleep(1)  # Small delay between responses
+        time.sleep(1)
         
-        # Check if session still exists
         with session_lock:
             if session_id not in sessions or not sessions[session_id]['active']:
                 break
@@ -202,28 +194,26 @@ def conversation_loop(session_id):
             conversation = sessions[session_id]['conversation']
             topic = sessions[session_id]['topic']
         
-        # LLM 2's turn (For position)
         last_messages = " ".join([msg["message"] for msg in conversation[-3:] if msg])
         prompt = f"Continue this conversation about {topic}: {last_messages}"
         
-        response2 = generate_response(prompt, OLLAMA2_URL, session_id, is_for_position=True)
+        # "Against" LLM's turn (Instance 2)
+        response_against = generate_response(prompt, session_id, selected_for_model, selected_against_model, is_for_position=False)
         
-        # Check if session still exists
         with session_lock:
             if session_id not in sessions or not sessions[session_id]['active']:
                 break
             
-            message2 = {
-                "speaker": for_position_label, 
-                "message": response2,
+            message_against = {
+                "speaker": against_position_label, 
+                "message": response_against,
                 "timestamp": time.time()
             }
-            sessions[session_id]['conversation'].append(message2)
+            sessions[session_id]['conversation'].append(message_against)
         
         turns += 1
-        time.sleep(1)  # Small delay between turns
+        time.sleep(1)
     
-    # Set conversation to inactive when done
     with session_lock:
         if session_id in sessions:
             sessions[session_id]['active'] = False
@@ -231,26 +221,185 @@ def conversation_loop(session_id):
 
 @app.route('/')
 def index():
-    # Generate a persistent session ID if one doesn't exist
     if 'session_id' not in session:
         session['session_id'] = str(uuid.uuid4())
     
     flask_session_id = session['session_id']
     
-    # Check if we already have a socketio session mapped to this flask session
     socketio_session_id = None
     with session_lock:
         if flask_session_id in flask_to_socketio_map:
             socketio_session_id = flask_to_socketio_map[flask_session_id]
-            # Verify this session actually exists
             if socketio_session_id not in sessions:
-                # If not, remove the mapping
                 del flask_to_socketio_map[flask_session_id]
                 socketio_session_id = None
     
     return render_template('index.html', 
                           session_id=flask_session_id,
                           socketio_session_id=socketio_session_id)
+
+@app.route('/api/models/<instance_name>', methods=['GET'])
+def get_available_models(instance_name):
+    container_name = ""
+    if instance_name == "ollama1": # For LLM
+        container_name = OLLAMA_FOR_CONTAINER_NAME
+    elif instance_name == "ollama2": # Against LLM
+        container_name = OLLAMA_AGAINST_CONTAINER_NAME
+    else:
+        return jsonify({"error": "Invalid instance name"}), 400
+    
+    models = list_models_in_container(container_name)
+    return jsonify({"models": models, "pullable_models": PULLABLE_MODELS_LIST})
+
+@app.route('/api/pull_model', methods=['POST'])
+def pull_model_api():
+    global is_long_ollama_operation_active
+    data = request.json
+    session_id_req = data.get('session_id') # session_id from request
+    instance_name = data.get('instance_name')
+    model_to_pull = data.get('model_name')
+
+    if not instance_name or not model_to_pull:
+        return jsonify({"status": "error", "message": "Instance name and model name are required"}), 400
+
+    # Check if debate is active for this session
+    if session_id_req and session_id_req in sessions:
+        with session_lock:
+            if sessions[session_id_req].get('active', False):
+                return jsonify({"status": "error", "message": "Cannot pull models while a debate is active in your session."}), 400
+    
+    with long_op_lock:
+        if is_long_ollama_operation_active:
+            return jsonify({"status": "error", "message": "Another model operation is already in progress. Please wait."}), 400
+        is_long_ollama_operation_active = True
+    
+    socketio.emit('long_ollama_operation_status', {"is_active": True}) # Notify all clients
+
+    container_name = ""
+    if instance_name == "ollama1": # For LLM
+        container_name = OLLAMA_FOR_CONTAINER_NAME
+    elif instance_name == "ollama2": # Against LLM
+        container_name = OLLAMA_AGAINST_CONTAINER_NAME
+    else:
+        return jsonify({"status": "error", "message": "Invalid instance name"}), 400
+
+    try:
+        success = pull_docker_model(container_name, model_to_pull)
+        if success:
+            updated_models = list_models_in_container(container_name)
+            # Emit to specific session if session_id_req is available, otherwise broadcast (or handle more granularly)
+            target_room = session_id_req if session_id_req else None 
+            socketio.emit('models_updated', {
+                "instance_name": instance_name, 
+                "models": updated_models
+            }, room=target_room)
+            return jsonify({"status": "success", "message": f"Model '{model_to_pull}' pulled successfully for {instance_name}."})
+        else:
+            return jsonify({"status": "error", "message": f"Failed to pull model '{model_to_pull}' for {instance_name}."}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        with long_op_lock:
+            is_long_ollama_operation_active = False
+        socketio.emit('long_ollama_operation_status', {"is_active": False}) # Notify all clients
+
+@app.route('/api/delete_model', methods=['POST'])
+def delete_model_api():
+    global is_long_ollama_operation_active
+    data = request.json
+    session_id_req = data.get('session_id')
+    instance_name = data.get('instance_name')
+    model_to_delete = data.get('model_name')
+
+    if not instance_name or not model_to_delete:
+        return jsonify({"status": "error", "message": "Instance name and model name are required"}), 400
+
+    if session_id_req and session_id_req in sessions:
+        with session_lock:
+            if sessions[session_id_req].get('active', False):
+                return jsonify({"status": "error", "message": "Cannot delete models while a debate is active in your session."}), 400
+    
+    with long_op_lock:
+        if is_long_ollama_operation_active:
+            return jsonify({"status": "error", "message": "Another model operation is already in progress. Please wait."}), 400
+        is_long_ollama_operation_active = True
+    
+    socketio.emit('long_ollama_operation_status', {"is_active": True})
+
+    container_name = ""
+    if instance_name == "ollama1": 
+        container_name = OLLAMA_FOR_CONTAINER_NAME
+    elif instance_name == "ollama2": 
+        container_name = OLLAMA_AGAINST_CONTAINER_NAME
+    else:
+        with long_op_lock: 
+            is_long_ollama_operation_active = False
+        socketio.emit('long_ollama_operation_status', {"is_active": False})
+        return jsonify({"status": "error", "message": "Invalid instance name"}), 400
+
+    try:
+        success = delete_model_from_container(container_name, model_to_delete)
+        if success:
+            updated_models = list_models_in_container(container_name)
+            target_room = session_id_req if session_id_req else None
+            socketio.emit('models_updated', {
+                "instance_name": instance_name, 
+                "models": updated_models
+            }, room=target_room)
+
+            # Refined logic for updating selected model if the deleted one was active
+            with session_lock:
+                if session_id_req and session_id_req in sessions:
+                    session_data = sessions[session_id_req]
+                    made_selection_change = False
+
+                    def get_fallback_model(current_selection, deleted_model, available_models_after_delete):
+                        if current_selection == deleted_model:
+                            if DEFAULT_MODEL_NAME in available_models_after_delete:
+                                return DEFAULT_MODEL_NAME, True
+                            elif available_models_after_delete: # Pick first available if default is gone
+                                return available_models_after_delete[0], True
+                            else: # No models left
+                                return None, True # Or some placeholder like "None"
+                        return current_selection, False # No change needed
+
+                    if instance_name == "ollama1":
+                        new_selection, changed = get_fallback_model(
+                            session_data.get('selected_for_model'),
+                            model_to_delete,
+                            updated_models
+                        )
+                        if changed:
+                            session_data['selected_for_model'] = new_selection
+                            made_selection_change = True
+                    elif instance_name == "ollama2":
+                        new_selection, changed = get_fallback_model(
+                            session_data.get('selected_against_model'),
+                            model_to_delete,
+                            updated_models
+                        )
+                        if changed:
+                            session_data['selected_against_model'] = new_selection
+                            made_selection_change = True
+                    
+                    if made_selection_change:
+                        socketio.emit('model_selection_updated', {
+                            "selected_for_model": session_data.get('selected_for_model'), # Will be None if no models left
+                            "selected_against_model": session_data.get('selected_against_model')
+                        }, room=session_id_req)
+
+            return jsonify({"status": "success", "message": f"Model '{model_to_delete}' deleted successfully from {instance_name}."})
+        else:
+            current_models = list_models_in_container(container_name)
+            if model_to_delete not in current_models:
+                 return jsonify({"status": "info", "message": f"Model '{model_to_delete}' was not found in {instance_name} (already deleted?)."}), 200
+            return jsonify({"status": "error", "message": f"Failed to delete model '{model_to_delete}' from {instance_name}."}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        with long_op_lock:
+            is_long_ollama_operation_active = False
+        socketio.emit('long_ollama_operation_status', {"is_active": False})
 
 @app.route('/api/conversation', methods=['GET'])
 def get_conversation():
@@ -265,18 +414,30 @@ def get_conversation():
 
 @app.route('/api/start', methods=['POST'])
 def start_conversation():
-    session_id = request.json.get('session_id')
+    global is_long_ollama_operation_active
+    data = request.json
+    session_id = data.get('session_id')
+    for_model = data.get('for_model', DEFAULT_MODEL_NAME)
+    against_model = data.get('against_model', DEFAULT_MODEL_NAME)
+
+    with long_op_lock:
+        if is_long_ollama_operation_active:
+            return jsonify({"status": "error", "message": "Cannot start debate: a model operation is in progress. Please wait."}), 400
     
     if not session_id or session_id not in sessions:
         return jsonify({"status": "error", "message": "Invalid session"})
     
     with session_lock:
-        # Only start if not already active
         if not sessions[session_id]['active']:
             sessions[session_id]['active'] = True
-            socketio.emit('conversation_status', {"active": True}, room=session_id)
+            sessions[session_id]['selected_for_model'] = for_model
+            sessions[session_id]['selected_against_model'] = against_model
             
-            # Start conversation in a new thread
+            socketio.emit('conversation_status', {
+                "active": True, 
+                "is_long_ollama_operation_active": is_long_ollama_operation_active
+                }, room=session_id)
+            
             conversation_thread = threading.Thread(
                 target=conversation_loop, 
                 args=(session_id,)
@@ -298,7 +459,10 @@ def stop_conversation():
     with session_lock:
         if session_id in sessions:
             sessions[session_id]['active'] = False
-            socketio.emit('conversation_status', {"active": False}, room=session_id)
+            socketio.emit('conversation_status', {
+                "active": False,
+                "is_long_ollama_operation_active": is_long_ollama_operation_active
+                }, room=session_id)
     
     return jsonify({"status": "stopped"})
 
@@ -313,7 +477,10 @@ def reset_conversation():
         if session_id in sessions:
             sessions[session_id]['conversation'] = []
             sessions[session_id]['active'] = False
-            socketio.emit('conversation_status', {"active": False}, room=session_id)
+            socketio.emit('conversation_status', {
+                "active": False,
+                "is_long_ollama_operation_active": is_long_ollama_operation_active
+                }, room=session_id)
     
     return jsonify({"status": "reset"})
 
@@ -334,17 +501,11 @@ def set_topic():
         if session_data['active']:
             return jsonify({"status": "error", "message": "Cannot change topic while debate is active"})
         
-        # Set the new topic
         session_data['topic'] = topic
-        
-        # Update the position labels based on the topic
         session_data['for_position_label'] = f"For {topic}"
         session_data['against_position_label'] = f"Against {topic}"
-        
-        # Clear existing conversation
         session_data['conversation'] = []
         
-        # Send topic update to clients in this session
         socketio.emit('topic_updated', {
             "topic": topic, 
             "for_label": session_data['for_position_label'],
@@ -360,7 +521,6 @@ def set_topic():
 
 @socketio.on('connect')
 def handle_connect():
-    # Get Flask session ID (from URL params or cookie)
     flask_session_id = request.args.get('flask_session_id')
     if not flask_session_id:
         try:
@@ -368,25 +528,20 @@ def handle_connect():
         except:
             flask_session_id = None
     
-    # Get any existing socketio session mapped to this Flask session
     socketio_session_id = None
     if flask_session_id:
         with session_lock:
             socketio_session_id = flask_to_socketio_map.get(flask_session_id)
     
-    # If we have a valid mapping and session exists, use it
     if socketio_session_id and socketio_session_id in sessions:
         session_id = socketio_session_id
     else:
-        # Otherwise create a new session with the socket.io ID
         session_id = request.sid
         
-        # Map the Flask session ID to this new SocketIO session ID
         if flask_session_id:
             with session_lock:
                 flask_to_socketio_map[flask_session_id] = session_id
         
-        # Initialize new session
         with session_lock:
             if session_id not in sessions:
                 default_topic = "God's existence"
@@ -396,37 +551,45 @@ def handle_connect():
                     'topic': default_topic,
                     'for_position_label': f"For {default_topic}",
                     'against_position_label': f"Against {default_topic}",
-                    'flask_session_id': flask_session_id  # Store association
+                    'flask_session_id': flask_session_id,
+                    'selected_for_model': DEFAULT_MODEL_NAME,
+                    'selected_against_model': DEFAULT_MODEL_NAME
                 }
     
-    # Join the room with the session ID
     join_room(session_id)
     
-    # Send initial data to the client
     with session_lock:
         if session_id in sessions:  # Verify session still exists
             session_data = sessions[session_id]
             
-            # Send session initialization data
             socketio.emit('session_init', {
                 "session_id": session_id
             }, room=session_id)
             
-            # Send conversation status
             socketio.emit('conversation_status', {
-                "active": session_data['active']
+                "active": session_data['active'],
+                "is_long_ollama_operation_active": is_long_ollama_operation_active
             }, room=session_id)
             
-            # Send topic information
             socketio.emit('topic_info', {
                 "topic": session_data['topic'],
                 "for_label": session_data['for_position_label'],
                 "against_label": session_data['against_position_label']
             }, room=session_id)
+
+            # Emit model information
+            ollama1_models = list_models_in_container(OLLAMA_FOR_CONTAINER_NAME) # For LLM
+            ollama2_models = list_models_in_container(OLLAMA_AGAINST_CONTAINER_NAME) # Against LLM
+            socketio.emit('models_info', {
+                "ollama1_models": ollama1_models, # For LLM
+                "ollama2_models": ollama2_models, # Against LLM
+                "pullable_models": PULLABLE_MODELS_LIST,
+                "selected_for_model": session_data.get('selected_for_model', DEFAULT_MODEL_NAME),
+                "selected_against_model": session_data.get('selected_against_model', DEFAULT_MODEL_NAME),
+                "default_model": DEFAULT_MODEL_NAME
+            }, room=session_id)
             
-            # If there are existing messages, send them to the client in proper order
             if session_data['conversation']:
-                # Make sure the messages are in chronological order (oldest to newest)
                 ordered_messages = sorted(
                     session_data['conversation'],
                     key=lambda msg: msg.get('timestamp', 0) if isinstance(msg, dict) else 0
@@ -438,8 +601,6 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     session_id = request.sid
-    # Clean up resources but keep the session data for a while
-    # (could add a cleanup timer to remove inactive sessions after a period)
     with session_lock:
         if session_id in sessions:
             sessions[session_id]['active'] = False

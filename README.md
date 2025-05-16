@@ -83,10 +83,14 @@ Try these topics for interesting debates:
 
 ## How It Works
 
-The application dynamically generates appropriate system prompts based on your chosen topic:
+The application dynamically generates appropriate system prompts based on your chosen topic. You can also select specific Ollama models for each debater via the "Settings" panel.
 
-- **For Position LLM**: Receives a prompt to argue in favor of the topic
-- **Against Position LLM**: Receives a prompt to argue against the topic
+- **For Position LLM**:
+    - Uses Ollama Instance 1 (running on host port `3001`, container name `ollama`).
+    - Receives a prompt to argue in favor of the topic.
+- **Against Position LLM**:
+    - Uses Ollama Instance 2 (running on host port `3002`, container name `ollama2`).
+    - Receives a prompt to argue against the topic.
 
 The system ensures that each LLM maintains its assigned perspective throughout the conversation, creating a balanced and engaging debate.
 

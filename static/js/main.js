@@ -37,6 +37,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const forTyping = document.getElementById('for-typing');
     const againstTyping = document.getElementById('against-typing');
     
+    // Settings panel elements
+    const settingsToggleBtn = document.getElementById('settings-toggle-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+
+    // Model selection dropdowns
+    const forModelSelect = document.getElementById('for-model-select');
+    const againstModelSelect = document.getElementById('against-model-select');
+
+    // Available models lists
+    const ollama1AvailableModelsList = document.getElementById('ollama1-available-models');
+    const ollama2AvailableModelsList = document.getElementById('ollama2-available-models');
+
+    // Pull model options containers
+    const ollama1PullOptions = document.getElementById('ollama1-pull-options');
+    const ollama2PullOptions = document.getElementById('ollama2-pull-options');
+    
+    // Pull status text
+    const ollama1PullStatus = document.getElementById('ollama1-pull-status');
+    const ollama2PullStatus = document.getElementById('ollama2-pull-status');
+
+    let currentPullableModels = [];
+    let currentDefaultModel = "";
+    let isDebateActive = false; // Track debate status locally
+    let isGloballyOperatingOllama = false; // Renamed from isGloballyPullingModel
+
     // Session management
     let sessionId = null;
     let isInitialLoad = true;
@@ -289,6 +314,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const debateMeta = document.querySelector('.debate-meta');
         statusText.textContent = data.active ? 'Active' : 'Idle';
         statusText.className = data.active ? 'status-value active' : 'status-value';
+        
+        isDebateActive = data.active;
+        isGloballyOperatingOllama = data.is_long_ollama_operation_active || false; // Update global op status
+
+        updateGlobalControlsState(); // Central function to manage UI element states
+
         startBtn.disabled = data.active;
         stopBtn.disabled = !data.active;
         
@@ -309,18 +340,288 @@ document.addEventListener('DOMContentLoaded', function() {
             againstTyping.classList.remove('visible');
         }
     });
+
+    // Handle global model operation status updates
+    socket.on('long_ollama_operation_status', function(data) { // Renamed event
+        isGloballyOperatingOllama = data.is_active; // Renamed property
+        updateGlobalControlsState();
+        
+        if (!isGloballyOperatingOllama) {
+            [ollama1PullStatus, ollama2PullStatus].forEach(el => {
+                if (el.textContent.includes("Pulling") || el.textContent.includes("Deleting")) { 
+                    el.textContent = 'Ollama operation finished.';
+                    setTimeout(() => { if(el.textContent === 'Ollama operation finished.') el.textContent = ''; }, 3000);
+                }
+            });
+        }
+    });
+
+    socket.on('model_selection_updated', function(data) {
+        console.log('Received model_selection_updated:', data);
+        if (data.selected_for_model) {
+            forModelSelect.value = data.selected_for_model;
+        }
+        if (data.selected_against_model) {
+            againstModelSelect.value = data.selected_against_model;
+        }
+    });
     
+    function updateGlobalControlsState() {
+        const debateCanStart = !isDebateActive && !isGloballyOperatingOllama;
+        startBtn.disabled = !debateCanStart;
+        stopBtn.disabled = !isDebateActive; // Stop only if active
+
+        // Settings panel and its contents
+        const settingsAreEditable = !isDebateActive && !isGloballyOperatingOllama;
+        settingsToggleBtn.disabled = isDebateActive; // Disable settings toggle if debate active
+
+        [forModelSelect, againstModelSelect].forEach(select => {
+            select.disabled = !settingsAreEditable;
+        });
+
+        document.querySelectorAll('.pull-options-list button, .delete-model-btn').forEach(btn => {
+            btn.disabled = !settingsAreEditable;
+        });
+        
+        // If settings panel is open and debate starts, or pull starts, visually disable it
+        if (settingsPanel.style.display === 'block' && !settingsAreEditable) {
+            // Optionally add a class to grey out settings or just rely on disabled inputs
+            settingsPanel.classList.add('panel-disabled');
+        } else {
+            settingsPanel.classList.remove('panel-disabled');
+        }
+    }
+
+    // Toggle settings panel
+    if (settingsToggleBtn && settingsPanel) {
+        settingsToggleBtn.addEventListener('click', function() {
+            if (isDebateActive) return; // Prevent opening if debate is active
+
+            if (settingsPanel.style.display === 'none') {
+                settingsPanel.style.display = 'block';
+                // Optionally, fetch model info when panel is opened if not already fresh
+                // fetchModelInfoForAllInstances(); // You might want to implement this
+            } else {
+                settingsPanel.style.display = 'none';
+            }
+        });
+    }
+
+    function updateAvailableModelsList(listElement, models, selectedModel, selectElement, instanceName) {
+        listElement.innerHTML = '';
+        selectElement.innerHTML = ''; // Clear select options too
+
+        if (models && models.length > 0) {
+            models.forEach(model => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                
+                const modelNameSpan = document.createElement('span');
+                modelNameSpan.textContent = model;
+                li.appendChild(modelNameSpan);
+
+                const controlsDiv = document.createElement('div');
+
+                if (model === currentDefaultModel) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge bg-info rounded-pill me-2';
+                    badge.textContent = 'Default';
+                    controlsDiv.appendChild(badge);
+                }
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger delete-model-btn';
+                deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                deleteBtn.title = `Delete ${model}`;
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation(); // Prevent li click if any
+                    if (confirm(`Are you sure you want to delete model "${model}" from ${instanceName === 'ollama1' ? 'For LLM' : 'Against LLM'}?`)) {
+                        deleteModel(instanceName, model);
+                    }
+                };
+                controlsDiv.appendChild(deleteBtn);
+                li.appendChild(controlsDiv);
+                listElement.appendChild(li);
+
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                if (model === selectedModel) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            });
+        } else {
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+            li.textContent = 'No models available. Pull one below.';
+            listElement.appendChild(li);
+            const option = document.createElement('option');
+            option.textContent = 'No models available';
+            option.disabled = true;
+            selectElement.appendChild(option);
+        }
+    }
+
+    function populatePullOptions(containerElement, instanceName, availableModels) {
+        containerElement.innerHTML = '';
+        currentPullableModels.forEach(modelToPull => {
+            if (!availableModels.includes(modelToPull)) { // Only show pull option if not already available
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-sm btn-outline-secondary me-1 mb-1';
+                btn.innerHTML = `<i class="bi bi-download me-1"></i> ${modelToPull}`;
+                btn.onclick = () => pullModel(instanceName, modelToPull);
+                containerElement.appendChild(btn);
+            }
+        });
+        updateGlobalControlsState(); // Ensure new buttons get correct disabled state
+    }
+
+    function pullModel(instanceName, modelName) {
+        if (isDebateActive || isGloballyOperatingOllama) {
+            alert("Cannot pull model now. A debate is active or another Ollama operation is in progress.");
+            return;
+        }
+
+        const statusElement = instanceName === 'ollama1' ? ollama1PullStatus : ollama2PullStatus;
+        statusElement.innerHTML = `<i class="bi bi-hourglass-split me-1"></i>Pulling ${modelName}... This can take a while.`;
+        statusElement.className = 'pull-status-text text-info';
+        
+        // Disable all pull buttons globally and start button
+        isGloballyOperatingOllama = true; // Optimistically set, backend will confirm
+        updateGlobalControlsState();
+
+        const pullOptionsContainer = instanceName === 'ollama1' ? ollama1PullOptions : ollama2PullOptions;
+        pullOptionsContainer.querySelectorAll('button').forEach(btn => btn.disabled = true);
+
+        fetch('/api/pull_model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instance_name: instanceName, model_name: modelName, session_id: sessionId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                statusElement.textContent = data.message;
+                statusElement.className = 'pull-status-text text-success';
+                // Backend will emit 'models_updated' which will refresh the lists
+            } else {
+                statusElement.textContent = `Error: ${data.message}`;
+                statusElement.className = 'pull-status-text text-danger';
+            }
+        })
+        .catch(error => {
+            statusElement.textContent = `Fetch error: ${error}`;
+            statusElement.className = 'pull-status-text text-danger';
+            isGloballyOperatingOllama = false; 
+            updateGlobalControlsState();
+        });
+    }
+
+    function deleteModel(instanceName, modelName) {
+        if (isDebateActive || isGloballyOperatingOllama) {
+            alert("Cannot delete model now. A debate is active or another Ollama operation is in progress.");
+            return;
+        }
+
+        const statusElement = instanceName === 'ollama1' ? ollama1PullStatus : ollama2PullStatus;
+        statusElement.innerHTML = `<i class="bi bi-hourglass-split me-1"></i>Deleting ${modelName}...`;
+        statusElement.className = 'pull-status-text text-info';
+
+        isGloballyOperatingOllama = true;
+        updateGlobalControlsState();
+
+        fetch('/api/delete_model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instance_name: instanceName, model_name: modelName, session_id: sessionId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success' || data.status === 'info') {
+                statusElement.textContent = data.message;
+                statusElement.className = data.status === 'success' ? 'pull-status-text text-success' : 'pull-status-text text-warning';
+                // Backend emits 'models_updated'
+            } else {
+                statusElement.textContent = `Error: ${data.message}`;
+                statusElement.className = 'pull-status-text text-danger';
+            }
+        })
+        .catch(error => {
+            statusElement.textContent = `Fetch error: ${error}`;
+            statusElement.className = 'pull-status-text text-danger';
+            isGloballyOperatingOllama = false;
+            updateGlobalControlsState();
+        });
+        // Backend will set isGloballyOperatingOllama to false and emit status
+    }
+
+    socket.on('models_info', function(data) {
+        console.log('Received models_info:', data);
+        currentPullableModels = data.pullable_models || [];
+        currentDefaultModel = data.default_model || "gemma3:4b"; // Ensure this matches DEFAULT_MODEL_NAME in app.py
+
+        // ollama1 is "For LLM"
+        updateAvailableModelsList(ollama1AvailableModelsList, data.ollama1_models, data.selected_for_model, forModelSelect, 'ollama1');
+        populatePullOptions(ollama1PullOptions, 'ollama1', data.ollama1_models || []);
+        
+        // ollama2 is "Against LLM"
+        updateAvailableModelsList(ollama2AvailableModelsList, data.ollama2_models, data.selected_against_model, againstModelSelect, 'ollama2');
+        populatePullOptions(ollama2PullOptions, 'ollama2', data.ollama2_models || []);
+        
+        updateGlobalControlsState(); // Apply initial state to controls
+    });
+
+    socket.on('models_updated', function(data) {
+        console.log('Received models_updated:', data);
+        const { instance_name, models } = data;
+        let statusElement, listElement, selectElement, pullOptionsContainer, currentSelectedModel;
+
+        if (instance_name === 'ollama1') {
+            statusElement = ollama1PullStatus;
+            listElement = ollama1AvailableModelsList;
+            selectElement = forModelSelect;
+            pullOptionsContainer = ollama1PullOptions;
+            currentSelectedModel = forModelSelect.value; // Preserve current selection if possible
+        } else if (instance_name === 'ollama2') {
+            statusElement = ollama2PullStatus;
+            listElement = ollama2AvailableModelsList;
+            selectElement = againstModelSelect;
+            pullOptionsContainer = ollama2PullOptions;
+            currentSelectedModel = againstModelSelect.value; // Preserve current selection
+        } else {
+            return;
+        }
+        
+        updateAvailableModelsList(listElement, models, currentSelectedModel, selectElement, instance_name);
+        populatePullOptions(pullOptionsContainer, instance_name, models || []);
+        updateGlobalControlsState(); // Re-apply disabled states after list update
+    });
+
     // Button event listeners with visual feedback
     startBtn.addEventListener('click', function() {
-        if (!sessionId) return;
+        if (!sessionId || isDebateActive || isGloballyOperatingOllama) return;
         
         const originalText = startBtn.innerHTML;
         startBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Starting...';
+
+        const selectedForModel = forModelSelect.value;
+        const selectedAgainstModel = againstModelSelect.value;
+
+        if (!selectedForModel || !selectedAgainstModel) {
+            alert("Please select models for both 'For' and 'Against' positions in the Settings panel.");
+            startBtn.innerHTML = originalText;
+            return;
+        }
         
         fetch('/api/start', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId })
+            body: JSON.stringify({ 
+                session_id: sessionId,
+                for_model: selectedForModel,
+                against_model: selectedAgainstModel
+            })
         })
             .then(response => response.json())
             .then(data => {

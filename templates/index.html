@@ -23,7 +23,61 @@
         <div class="debate-container">
             <header class="debate-header">
                 <h1 id="debate-title" class="mb-0">LLM Debate Arena</h1>
+                <button id="settings-toggle-btn" class="btn btn-sm btn-outline-light settings-toggle-btn">
+                    <i class="bi bi-gear-fill"></i> Settings
+                </button>
             </header>
+
+            <div class="settings-panel card shadow-sm" id="settings-panel" style="display: none;">
+                <div class="card-body">
+                    <h3 class="card-title"><i class="bi bi-sliders me-2"></i>Model Configuration</h3>
+                    <div class="row">
+                        <!-- For LLM Settings -->
+                        <div class="col-md-6 mb-3">
+                            <h5><i class="bi bi-person-check-fill me-1"></i>For LLM (Ollama Instance 1)</h5>
+                            <div class="mb-2">
+                                <label for="for-model-select" class="form-label">Select Model for Debate:</label>
+                                <select id="for-model-select" class="form-select form-select-sm"></select>
+                            </div>
+                            <h6>Available Models:</h6>
+                            <ul id="ollama1-available-models" class="list-group list-group-sm mb-2">
+                                <!-- Models will be listed here by JS -->
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Model Name
+                                    <button class="btn btn-sm btn-danger">Delete</button>
+                                </li>
+                            </ul>
+                            <h6>Pull New Models:</h6>
+                            <div id="ollama1-pull-options" class="pull-options-list">
+                                <!-- Pull buttons will be here -->
+                            </div>
+                            <div id="ollama1-pull-status" class="pull-status-text"></div>
+                        </div>
+
+                        <!-- Against LLM Settings -->
+                        <div class="col-md-6 mb-3">
+                            <h5><i class="bi bi-person-x-fill me-1"></i>Against LLM (Ollama Instance 2)</h5>
+                            <div class="mb-2">
+                                <label for="against-model-select" class="form-label">Select Model for Debate:</label>
+                                <select id="against-model-select" class="form-select form-select-sm"></select>
+                            </div>
+                            <h6>Available Models:</h6>
+                            <ul id="ollama2-available-models" class="list-group list-group-sm mb-2">
+                                <!-- Models will be listed here by JS -->
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Model Name
+                                    <button class="btn btn-sm btn-danger">Delete</button>
+                                </li>
+                            </ul>
+                            <h6>Pull New Models:</h6>
+                            <div id="ollama2-pull-options" class="pull-options-list">
+                                <!-- Pull buttons will be here -->
+                            </div>
+                            <div id="ollama2-pull-status" class="pull-status-text"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <div class="topic-form card shadow-sm" id="topic-form">
                 <div class="card-body">

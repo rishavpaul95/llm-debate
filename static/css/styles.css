@@ -45,15 +45,102 @@ body {
     color: white;
     text-align: center;
     padding: 1rem;
-    position: relative;
+    position: relative; /* For settings button positioning */
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    display: flex; /* For aligning title and button */
+    justify-content: center; /* Center title by default */
+    align-items: center;
 }
 
-h1 {
-    font-weight: 600;
-    margin: 0;
-    font-size: 1.5rem;
-    letter-spacing: 0.5px;
+.debate-header h1 {
+    flex-grow: 1; /* Allow title to take space */
+    text-align: center; /* Ensure title remains centered */
+    margin-left: 70px; /* Make space for the button on the right */
+}
+
+.settings-toggle-btn {
+    position: absolute;
+    top: 50%;
+    right: 1.5rem;
+    transform: translateY(-50%);
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+    background-color: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+}
+.settings-toggle-btn:hover {
+    background-color: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.5);
+}
+
+.settings-panel {
+    margin: 0 1.8rem 1rem; /* Similar to topic form */
+    background-color: #fdfdff; /* Slightly off-white */
+    border-radius: var(--border-radius);
+    border: 1px solid #e8eaf0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    padding: 1rem; /* Remove card-body default padding if it conflicts */
+}
+
+.settings-panel.panel-disabled {
+    opacity: 0.7;
+    pointer-events: none; /* Disables interactions with elements inside */
+}
+
+.settings-panel .card-body {
+    padding: 1rem; /* Adjust if needed */
+}
+
+.settings-panel h3 {
+    margin-bottom: 1.2rem;
+    color: var(--dark-text);
+    font-weight: 500;
+    font-size: 1.3rem;
+    border-bottom: 1px solid #e8eaf0;
+    padding-bottom: 0.6rem;
+}
+.settings-panel h5 {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--secondary-color);
+    margin-bottom: 0.8rem;
+}
+.settings-panel h6 {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--gray-text);
+    margin-top: 0.8rem;
+    margin-bottom: 0.4rem;
+}
+
+.form-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+}
+
+.form-select-sm {
+    font-size: 0.9rem;
+    padding: 0.4rem 0.8rem;
+}
+
+.list-group-sm .list-group-item {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.9rem;
+    background-color: #f8f9fc;
+    border-color: #eef2f7;
+}
+
+.pull-options-list button {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.6rem;
+}
+
+.pull-status-text {
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+    min-height: 1.2em; /* Reserve space */
 }
 
 .debate-footer {
@@ -513,6 +600,26 @@ h1 {
     .debate-meta.form-hidden {
         margin-top: 1rem;
     }
+
+    .debate-header h1 {
+        font-size: 1.3rem; /* Adjust title size */
+        margin-left: 60px; /* Adjust for smaller button */
+    }
+    .settings-toggle-btn {
+        right: 1rem;
+        padding: 0.25rem 0.6rem;
+        font-size: 0.8rem;
+    }
+    .settings-panel .row > div {
+        margin-bottom: 1.5rem !important; /* Ensure spacing on mobile */
+    }
+
+    .settings-toggle-btn:disabled {
+        background-color: rgba(255,255,255,0.1) !important;
+        border-color: rgba(255,255,255,0.2) !important;
+        color: rgba(255,255,255,0.5) !important;
+        cursor: not-allowed;
+    }
 }
 
 @media (max-width: 480px) {
@@ -602,6 +709,32 @@ h1 {
         bottom: 2px;
         left: 50%;
         transform: translateX(-50%);
+    }
+
+    .debate-header {
+        flex-direction: column; /* Stack title and button */
+        padding-bottom: 0.5rem;
+    }
+    .debate-header h1 {
+        margin-left: 0; /* Reset margin */
+        margin-bottom: 0.5rem; /* Space between title and button */
+        font-size: 1.2rem;
+    }
+    .settings-toggle-btn {
+        position: static; /* Remove absolute positioning */
+        transform: none;
+        margin-top: 0.5rem; /* Space it from title */
+        align-self: center;
+    }
+    .settings-panel {
+        margin: 0 1.2rem 1rem;
+    }
+
+    .settings-toggle-btn:disabled {
+        background-color: rgba(255,255,255,0.1) !important;
+        border-color: rgba(255,255,255,0.2) !important;
+        color: rgba(255,255,255,0.5) !important;
+        cursor: not-allowed;
     }
 }
 
