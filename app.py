@@ -19,6 +19,11 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 # Against LLM -> Ollama Instance 2 (ollama2, port 3002)
 OLLAMA_FOR_URL = "http://localhost:3001/api/generate" # Instance 1 for "For"
 OLLAMA_AGAINST_URL = "http://localhost:3002/api/generate" # Instance 2 for "Against"
+
+# Helper to get base URLs for API calls like delete, show, etc.
+OLLAMA_FOR_BASE_URL = OLLAMA_FOR_URL.replace("/api/generate", "")
+OLLAMA_AGAINST_BASE_URL = OLLAMA_AGAINST_URL.replace("/api/generate", "")
+
 OLLAMA_FOR_CONTAINER_NAME = "ollama"
 OLLAMA_AGAINST_CONTAINER_NAME = "ollama2"
 
@@ -326,11 +331,15 @@ def delete_model_api():
     
     socketio.emit('long_ollama_operation_status', {"is_active": True})
 
-    container_name = ""
+    ollama_base_url_to_call = ""
+    container_name_for_listing = "" 
+
     if instance_name == "ollama1": 
-        container_name = OLLAMA_FOR_CONTAINER_NAME
+        ollama_base_url_to_call = OLLAMA_FOR_BASE_URL
+        container_name_for_listing = OLLAMA_FOR_CONTAINER_NAME
     elif instance_name == "ollama2": 
-        container_name = OLLAMA_AGAINST_CONTAINER_NAME
+        ollama_base_url_to_call = OLLAMA_AGAINST_BASE_URL
+        container_name_for_listing = OLLAMA_AGAINST_CONTAINER_NAME
     else:
         with long_op_lock: 
             is_long_ollama_operation_active = False
@@ -338,16 +347,15 @@ def delete_model_api():
         return jsonify({"status": "error", "message": "Invalid instance name"}), 400
 
     try:
-        success = delete_model_from_container(container_name, model_to_delete)
-        if success:
-            updated_models = list_models_in_container(container_name)
-            target_room = session_id_req if session_id_req else None
-            socketio.emit('models_updated', {
-                "instance_name": instance_name, 
-                "models": updated_models
-            }, room=target_room)
+        success = delete_model_from_container(ollama_base_url_to_call, model_to_delete)
+        updated_models = list_models_in_container(container_name_for_listing)
+        target_room = session_id_req if session_id_req else None
+        socketio.emit('models_updated', {
+            "instance_name": instance_name, 
+            "models": updated_models
+        }, room=target_room)
 
-            # Refined logic for updating selected model if the deleted one was active
+        if success:
             with session_lock:
                 if session_id_req and session_id_req in sessions:
                     session_data = sessions[session_id_req]
@@ -357,11 +365,11 @@ def delete_model_api():
                         if current_selection == deleted_model:
                             if DEFAULT_MODEL_NAME in available_models_after_delete:
                                 return DEFAULT_MODEL_NAME, True
-                            elif available_models_after_delete: # Pick first available if default is gone
+                            elif available_models_after_delete: 
                                 return available_models_after_delete[0], True
-                            else: # No models left
-                                return None, True # Or some placeholder like "None"
-                        return current_selection, False # No change needed
+                            else: 
+                                return None, True 
+                        return current_selection, False
 
                     if instance_name == "ollama1":
                         new_selection, changed = get_fallback_model(
@@ -384,16 +392,13 @@ def delete_model_api():
                     
                     if made_selection_change:
                         socketio.emit('model_selection_updated', {
-                            "selected_for_model": session_data.get('selected_for_model'), # Will be None if no models left
+                            "selected_for_model": session_data.get('selected_for_model'),
                             "selected_against_model": session_data.get('selected_against_model')
                         }, room=session_id_req)
-
-            return jsonify({"status": "success", "message": f"Model '{model_to_delete}' deleted successfully from {instance_name}."})
+            return jsonify({"status": "success", "message": f"Model '{model_to_delete}' delete operation processed for {instance_name}."})
         else:
-            current_models = list_models_in_container(container_name)
-            if model_to_delete not in current_models:
-                 return jsonify({"status": "info", "message": f"Model '{model_to_delete}' was not found in {instance_name} (already deleted?)."}), 200
             return jsonify({"status": "error", "message": f"Failed to delete model '{model_to_delete}' from {instance_name}."}), 500
+            
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:

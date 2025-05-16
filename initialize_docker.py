@@ -2,6 +2,8 @@ import subprocess
 import time
 import sys
 import re  # For parsing ollama list output
+import json  # Added for constructing JSON payload
+import requests  # Import requests library
 
 OLLAMA_IMAGE = "ollama/ollama"
 DEFAULT_MODEL_NAME = "gemma3:4b"  # Renamed from MODEL_NAME to be more specific
@@ -125,21 +127,36 @@ def pull_model_in_container(container_name, model_name_to_pull):
         print(f"Failed to pull model '{model_name_to_pull}' in container '{container_name}': {e}")
         return False
 
-def delete_model_from_container(container_name, model_name_to_delete):
-    """Deletes the specified model from the container."""
-    print(f"Attempting to delete model '{model_name_to_delete}' from container '{container_name}'...")
+def delete_model_from_container(ollama_instance_base_url, model_name_to_delete):
+    """Deletes the specified model from the given Ollama instance API."""
+    delete_url = f"{ollama_instance_base_url}/api/delete"
+    payload = {"model": model_name_to_delete}
+    
+    print(f"Attempting to delete model '{model_name_to_delete}' from Ollama instance at {ollama_instance_base_url} via API call to {delete_url}...")
+    
     try:
-        # Check if model exists before attempting to delete
-        existing_models = list_models_in_container(container_name)
-        if model_name_to_delete not in existing_models:
-            print(f"Model '{model_name_to_delete}' does not exist in '{container_name}'. Cannot delete.")
-            return False  # Or True, depending on desired idempotency for "already deleted"
-
-        run_command(["docker", "exec", container_name, "ollama", "delete", model_name_to_delete], check=True)
-        print(f"Model '{model_name_to_delete}' deleted successfully from '{container_name}'.")
-        return True
-    except Exception as e:
-        print(f"Failed to delete model '{model_name_to_delete}' from container '{container_name}': {e}")
+        response = requests.delete(delete_url, json=payload)
+        
+        if response.status_code == 200:
+            print(f"Model '{model_name_to_delete}' deleted successfully from {ollama_instance_base_url}.")
+            return True
+        elif response.status_code == 404:
+            print(f"Model '{model_name_to_delete}' not found on {ollama_instance_base_url} (API returned 404). Considered successful.")
+            return True  # Model is not present, so delete operation is effectively successful.
+        else:
+            print(f"Failed to delete model '{model_name_to_delete}' from {ollama_instance_base_url}. API call failed.")
+            print(f"Status Code: {response.status_code}")
+            try:
+                print(f"Response: {response.json()}")
+            except requests.exceptions.JSONDecodeError:
+                print(f"Response: {response.text}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred while trying to send DELETE request to {delete_url}: {e}")
+        return False
+    except Exception as e: 
+        print(f"An unexpected error occurred while trying to delete model '{model_name_to_delete}' from '{ollama_instance_base_url}': {e}")
         return False
 
 def initialize_ollama_services():
