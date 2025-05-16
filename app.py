@@ -136,6 +136,138 @@ def generate_response(prompt, session_id, for_model_name, against_model_name, is
     
     return full_response
 
+def generate_evaluation_response(prompt_text, session_id):
+    """Get an evaluation response from an Ollama instance using streaming."""
+    speaker = "Evaluator"
+    system_prompt_eval = "You will be shown a debate conversation. Your task is to determine who won the debate and provide a concise explanation for your decision. Focus on the strength of arguments, rebuttals, and overall persuasiveness. Avoid simply summarizing the debate."
+    endpoint_url = OLLAMA_FOR_URL # Use one of the instances
+    current_model_name = DEFAULT_MODEL_NAME
+
+    socketio.emit('typing_indicator', {"speaker": speaker, "typing": True}, room=session_id)
+    
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "model": current_model_name,
+        "prompt": prompt_text,
+        "system": system_prompt_eval,
+        "stream": True,
+        "max_tokens": 400 # Slightly more tokens for evaluation
+    }
+    
+    message_id = f"{int(time.time() * 1000)}-{speaker}"
+    full_response_text = ""
+    
+    try:
+        with requests.post(endpoint_url, headers=headers, json=data, stream=True) as response:
+            if response.status_code != 200:
+                error_msg = f"Error: {response.status_code} - {response.text}"
+                socketio.emit('stream_message', {
+                    "speaker": speaker,
+                    "message": error_msg,
+                    "message_id": message_id,
+                    "done": True
+                }, room=session_id)
+                return error_msg
+            
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line)
+                        if 'response' in chunk:
+                            chunk_text = chunk['response']
+                            full_response_text += chunk_text
+                            
+                            with session_lock:
+                                if session_id not in sessions: # Check if session still exists
+                                    break 
+                            
+                            socketio.emit('stream_message', {
+                                "speaker": speaker,
+                                "message": chunk_text,
+                                "message_id": message_id,
+                                "done": chunk.get('done', False)
+                            }, room=session_id)
+                            
+                            time.sleep(0.01)
+                        
+                        if chunk.get('done', False):
+                            break
+                    except json.JSONDecodeError:
+                        continue # Ignore malformed JSON lines
+
+    except Exception as e:
+        error_msg = f"Error during evaluation: {str(e)}"
+        with session_lock:
+            if session_id in sessions:
+                socketio.emit('stream_message', {
+                    "speaker": speaker,
+                    "message": error_msg,
+                    "message_id": message_id,
+                    "done": True
+                }, room=session_id)
+        return error_msg
+    
+    with session_lock:
+        if session_id in sessions: # Check if session still exists
+            socketio.emit('typing_indicator', {"speaker": speaker, "typing": False}, room=session_id)
+    
+    return full_response_text
+
+def evaluate_debate(session_id):
+    with session_lock:
+        if session_id not in sessions:
+            return
+        session_data = sessions[session_id]
+        conversation_history = session_data['conversation']
+        # Ensure no active debate during evaluation to prevent race conditions
+        if session_data['active']: 
+            print(f"Warning: evaluate_debate called for session {session_id} while still active.")
+            return
+
+
+    # Announce evaluation phase
+    system_message_text = "The debate has concluded. An impartial evaluator will now determine the winner and provide an analysis."
+    system_message = {
+        "speaker": "System",
+        "message": system_message_text,
+        "timestamp": time.time()
+    }
+    with session_lock:
+        if session_id in sessions:
+            sessions[session_id]['conversation'].append(system_message)
+    socketio.emit('new_message', system_message, room=session_id)
+    time.sleep(0.5) # Small delay for the message to appear
+
+    # Prepare conversation text for the evaluator
+    # Exclude the "System" announcement message itself from the text sent for evaluation
+    debate_text_for_evaluator = "\n\n".join([
+        f"{msg['speaker']}: {msg['message']}" 
+        for msg in conversation_history 
+        if msg['speaker'] != "System" # Exclude system messages from evaluation content
+    ])
+    
+    if not debate_text_for_evaluator.strip():
+        print(f"No debate content to evaluate for session {session_id}.")
+        return
+
+    evaluation_prompt = f"Here is the debate transcript:\n\n{debate_text_for_evaluator}\n\nBased on this transcript, who won the debate and why?"
+    
+    evaluator_response = generate_evaluation_response(evaluation_prompt, session_id)
+
+    with session_lock:
+        if session_id in sessions:
+            sessions[session_id]['conversation'].append({
+                "speaker": "Evaluator",
+                "message": evaluator_response,
+                "timestamp": time.time()
+            })
+            # Ensure debate remains inactive after evaluation
+            sessions[session_id]['active'] = False 
+            socketio.emit('conversation_status', {
+                "active": False,
+                "is_long_ollama_operation_active": is_long_ollama_operation_active 
+            }, room=session_id)
+
 def conversation_loop(session_id):
     """Function to run the conversation between the two LLMs for a specific session"""
     with session_lock:
@@ -161,6 +293,7 @@ def conversation_loop(session_id):
                 socketio.emit('new_message', {"speaker": "Human", "message": prompt}, room=session_id)
     
     turns = 0
+    max_turns = 3 # Define max_turns for clarity
     
     while True:
         with session_lock:
@@ -170,7 +303,7 @@ def conversation_loop(session_id):
             conversation = sessions[session_id]['conversation']
             topic = sessions[session_id]['topic']
         
-        if turns >= 10:
+        if turns >= max_turns: # Use max_turns
             break
         
         last_messages = " ".join([msg["message"] for msg in conversation[-3:] if msg])
@@ -219,10 +352,27 @@ def conversation_loop(session_id):
         turns += 1
         time.sleep(1)
     
+    # After the loop finishes
     with session_lock:
         if session_id in sessions:
+            # Mark debate as inactive before evaluation
             sessions[session_id]['active'] = False
-            socketio.emit('conversation_status', {"active": False}, room=session_id)
+            socketio.emit('conversation_status', {
+                "active": False,
+                "is_long_ollama_operation_active": is_long_ollama_operation_active # Pass current global op status
+                }, room=session_id)
+            
+            # Check if the loop ended due to max_turns, not external stop
+            # This ensures evaluation only happens if the debate ran its course
+            if turns >= max_turns:
+                # Call evaluation in a new thread to avoid blocking
+                eval_thread = threading.Thread(target=evaluate_debate, args=(session_id,))
+                eval_thread.daemon = True
+                eval_thread.start()
+            else:
+                print(f"Debate for session {session_id} ended before max turns. No evaluation.")
+        else:
+            print(f"Session {session_id} not found after conversation loop. No evaluation.")
 
 @app.route('/')
 def index():

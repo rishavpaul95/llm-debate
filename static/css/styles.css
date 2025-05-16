@@ -438,6 +438,14 @@ body {
 }
 .for-typing .dot { background-color: var(--for-color); }
 .against-typing .dot { background-color: var(--against-color); }
+.evaluator-typing { /* Styles for the evaluator's typing indicator */
+    justify-content: center; /* Center it if it's a block element */
+    margin-top: 1rem; /* Add some space if it's displayed outside conversation */
+    margin-bottom: 1rem;
+}
+.evaluator-typing .dot {
+    background-color: var(--primary-color); /* Match evaluator message color */
+}
 
 .typing-indicator .dot:nth-child(1) { animation-delay: 0s; }
 .typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
@@ -499,6 +507,28 @@ body {
     margin-right: auto; /* Align to left */
     border-bottom-left-radius: var(--border-radius-sm); /* Chat bubble tail */
 }
+.message.evaluator-message {
+    background-color: var(--primary-color); /* Dark slate blue, like header */
+    color: white;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left; /* Keep text left-aligned for readability */
+    font-style: normal;
+    max-width: 80%; /* Can be wider */
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+}
+.message.system-message {
+    background-color: var(--surface-color);
+    color: var(--text-light);
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+    font-style: italic;
+    max-width: 70%;
+    padding: 0.6rem 1rem;
+    border: 1px dashed var(--border-color);
+}
 .speaker {
     font-weight: 600;
     margin-bottom: 0.3rem;
@@ -508,6 +538,8 @@ body {
 .message.for-position .speaker { color: var(--for-color); }
 .message.against-position .speaker { color: var(--against-color); }
 .message.human .speaker { display: none; } /* No speaker for human intro */
+.message.evaluator-message .speaker { color: var(--secondary-color); font-size: 1rem; } /* Bright blue for Evaluator speaker */
+.message.system-message .speaker { display: none; } /* No speaker for system messages */
 
 .content {
     white-space: pre-wrap;

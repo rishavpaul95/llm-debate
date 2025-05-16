@@ -36,6 +36,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Typing indicators
     const forTyping = document.getElementById('for-typing');
     const againstTyping = document.getElementById('against-typing');
+    const evaluatorTyping = document.createElement('div'); // Create a new typing indicator for evaluator
+    evaluatorTyping.id = 'evaluator-typing';
+    evaluatorTyping.className = 'typing-indicator evaluator-typing'; // Add new class
+    evaluatorTyping.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+    const debateArena = document.querySelector('.debate-arena');
+    if (debateArena) {
+        const conversationContainer = document.getElementById('conversation');
+        if (conversationContainer && conversationContainer.parentNode === debateArena) {
+            debateArena.insertBefore(evaluatorTyping, conversationContainer.nextSibling);
+        } else {
+            debateArena.appendChild(evaluatorTyping);
+        }
+    }
     
     // Settings panel elements
     const settingsToggleBtn = document.getElementById('settings-toggle-btn');
@@ -208,6 +221,8 @@ document.addEventListener('DOMContentLoaded', function() {
             forTyping.classList.toggle('visible', typing);
         } else if (speaker === currentAgainstLabel || speaker.includes('Against ')) {
             againstTyping.classList.toggle('visible', typing);
+        } else if (speaker === 'Evaluator') {
+            evaluatorTyping.classList.toggle('visible', typing);
         }
     });
     
@@ -295,6 +310,11 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (speaker === currentAgainstLabel || speaker.includes('Against ')) {
             speakerClass = 'against-position';
             againstTyping.classList.remove('visible');
+        } else if (speaker === 'Evaluator') {
+            speakerClass = 'evaluator-message';
+            evaluatorTyping.classList.remove('visible');
+        } else if (speaker === 'System') {
+            speakerClass = 'system-message';
         } else {
             speakerClass = 'generic-llm'; // Fallback
         }
@@ -369,6 +389,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!data.active) {
             forTyping.classList.remove('visible');
             againstTyping.classList.remove('visible');
+            evaluatorTyping.classList.remove('visible'); // Hide evaluator typing too
         }
     });
 
