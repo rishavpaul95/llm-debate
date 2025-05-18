@@ -42,9 +42,13 @@ http://localhost:5000
 ## Using the Application
 
 1. **Enter a Topic**: Type any debate topic in the input field and click "Set Topic"
-2. **Start the Debate**: Click "Start Debate" to begin the conversation
-3. **Watch the Debate**: See the LLMs take opposing positions on your chosen topic
-4. **Control the Debate**: Use the Stop and Reset buttons to control the flow
+2. **Configure Settings (Optional)**: Click the "Settings" button to:
+    - Select specific Ollama models for the "For" and "Against" debaters.
+    - Pull new models into the Ollama instances.
+    - Set the "Number of Exchanges" for the debate (default is 1, range 1-5). Each exchange consists of one statement from each debater.
+3. **Start the Debate**: Click "Start Debate" to begin the conversation
+4. **Watch the Debate**: See the LLMs take opposing positions on your chosen topic
+5. **Control the Debate**: Use the Stop and Reset buttons to control the flow
 
 Your session will persist even if you refresh the page or close and reopen your browser. Each visitor to the site gets their own private debate session.
 
@@ -67,6 +71,8 @@ Try these topics for interesting debates:
 - **Persistent Sessions**: Your debate continues exactly where you left off if you refresh the page
 - **Multi-User Support**: Each visitor gets their own independent debate session
 - **Dynamic Topics**: Set any topic you want the LLMs to debate
+- **Configurable Models**: Choose different Ollama models for each debater.
+- **Configurable Number of Debate Exchanges**: Set how many rounds of back-and-forth the debate will have.
 - **Real-time Updates**: See the conversation unfold with live typing indicators
 - **Responsive Design**: Works on desktops, tablets, and mobile devices
 - **Visual Differentiation**: Each side of the debate has distinct visual styling
@@ -83,7 +89,7 @@ Try these topics for interesting debates:
 
 ## How It Works
 
-The application dynamically generates appropriate system prompts based on your chosen topic. You can also select specific Ollama models for each debater via the "Settings" panel.
+The application dynamically generates appropriate system prompts based on your chosen topic. You can also select specific Ollama models for each debater and configure the number of exchanges (turns) for the debate via the "Settings" panel.
 
 - **For Position LLM**:
     - Uses Ollama Instance 1 (running on host port `3001`, container name `ollama`).

@@ -17,6 +17,8 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'llm-debate-secret-key'  # Needed for session management
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
+DEFAULT_MAX_TURNS = 1 # Default number of exchanges
+
 # For LLM -> Ollama Instance 1 (ollama, port 3001)
 # Against LLM -> Ollama Instance 2 (ollama2, port 3002)
 OLLAMA_FOR_URL = "http://localhost:3001/api/generate" # Instance 1 for "For"
@@ -303,6 +305,7 @@ def conversation_loop(session_id):
         against_position_label = session_data['against_position_label']
         selected_for_model = session_data.get('selected_for_model', DEFAULT_MODEL_NAME)
         selected_against_model = session_data.get('selected_against_model', DEFAULT_MODEL_NAME)
+        max_turns = session_data.get('max_turns', DEFAULT_MAX_TURNS) # Use session's max_turns
 
     if not conversation:
         prompt = f"Hello! Let's discuss {topic} today."
@@ -316,7 +319,6 @@ def conversation_loop(session_id):
                 socketio.emit('new_message', {"speaker": "Human", "message": prompt}, room=session_id)
     
     turns = 0
-    max_turns = 1 # Define max_turns for clarity (number of full exchanges)
     
     while True:
         with session_lock:
@@ -326,7 +328,7 @@ def conversation_loop(session_id):
             conversation = sessions[session_id]['conversation']
             topic = sessions[session_id]['topic']
         
-        if turns >= max_turns: # Use max_turns
+        if turns >= max_turns:
             break
         
         # Randomize who goes first in this exchange
@@ -620,6 +622,14 @@ def start_conversation():
     session_id = data.get('session_id')
     for_model = data.get('for_model', DEFAULT_MODEL_NAME)
     against_model = data.get('against_model', DEFAULT_MODEL_NAME)
+    max_turns = data.get('max_turns', DEFAULT_MAX_TURNS) # Get max_turns from request
+
+    try:
+        max_turns = int(max_turns)
+        if not (1 <= max_turns <= 5): # Validate range
+            max_turns = DEFAULT_MAX_TURNS
+    except (ValueError, TypeError):
+        max_turns = DEFAULT_MAX_TURNS
 
     with long_op_lock:
         if is_long_ollama_operation_active:
@@ -633,6 +643,7 @@ def start_conversation():
             sessions[session_id]['active'] = True
             sessions[session_id]['selected_for_model'] = for_model
             sessions[session_id]['selected_against_model'] = against_model
+            sessions[session_id]['max_turns'] = max_turns # Store max_turns in session
             
             socketio.emit('conversation_status', {
                 "active": True, 
@@ -678,6 +689,7 @@ def reset_conversation():
         if session_id in sessions:
             sessions[session_id]['conversation'] = []
             sessions[session_id]['active'] = False
+            sessions[session_id]['max_turns'] = DEFAULT_MAX_TURNS # Reset max_turns
             socketio.emit('conversation_status', {
                 "active": False,
                 "is_long_ollama_operation_active": is_long_ollama_operation_active
@@ -754,7 +766,8 @@ def handle_connect():
                     'against_position_label': f"Against {default_topic}",
                     'flask_session_id': flask_session_id,
                     'selected_for_model': DEFAULT_MODEL_NAME,
-                    'selected_against_model': DEFAULT_MODEL_NAME
+                    'selected_against_model': DEFAULT_MODEL_NAME,
+                    'max_turns': DEFAULT_MAX_TURNS # Add default max_turns
                 }
     
     join_room(session_id)
@@ -764,7 +777,8 @@ def handle_connect():
             session_data = sessions[session_id]
             
             socketio.emit('session_init', {
-                "session_id": session_id
+                "session_id": session_id,
+                "max_turns": session_data.get('max_turns', DEFAULT_MAX_TURNS) # Send current max_turns
             }, room=session_id)
             
             socketio.emit('conversation_status', {
@@ -787,7 +801,8 @@ def handle_connect():
                 "pullable_models": PULLABLE_MODELS_LIST,
                 "selected_for_model": session_data.get('selected_for_model', DEFAULT_MODEL_NAME),
                 "selected_against_model": session_data.get('selected_against_model', DEFAULT_MODEL_NAME),
-                "default_model": DEFAULT_MODEL_NAME
+                "default_model": DEFAULT_MODEL_NAME,
+                "max_turns": session_data.get('max_turns', DEFAULT_MAX_TURNS) # Send current max_turns
             }, room=session_id)
             
             if session_data['conversation']:

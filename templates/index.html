@@ -1,137 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LLM Debate Arena</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <!-- Bootstrap Icons (kept for icons) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css"
+    />
     <!-- Custom Stylesheet -->
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-</head>
-<body>
-    <input type="hidden" id="flask-session-id" value="{{ session_id }}">
-    <input type="hidden" id="socketio-session-id" value="{{ socketio_session_id|default('') }}">
-    
+  </head>
+  <body>
+    <input type="hidden" id="flask-session-id" value="{{ session_id }}" />
+    <input
+      type="hidden"
+      id="socketio-session-id"
+      value="{{ socketio_session_id|default('') }}"
+    />
+
     <div class="page-container">
-        <div class="debate-container">
-            <header class="debate-header">
-                <h1 id="debate-title">LLM Debate Arena</h1>
-                <button id="settings-toggle-btn" class="settings-toggle-btn">
-                    <i class="bi bi-gear-fill"></i> Settings
-                </button>
-            </header>
+      <div class="debate-container">
+        <header class="debate-header">
+          <h1 id="debate-title">LLM Debate Arena</h1>
+          <button id="settings-toggle-btn" class="settings-toggle-btn">
+            <i class="bi bi-gear-fill"></i> Settings
+          </button>
+        </header>
 
-            <div class="settings-panel" id="settings-panel" style="display: none;">
-                <div class="settings-header">
-                    <h3><i class="bi bi-sliders"></i> Model Configuration</h3>
-                </div>
-                <div class="settings-body">
-                    <div class="settings-column">
-                        <h4><i class="bi bi-person-check-fill"></i> For LLM (Instance 1)</h4>
-                        <div class="form-group">
-                            <label for="for-model-select">Select Model for Debate:</label>
-                            <select id="for-model-select" class="model-select"></select>
-                        </div>
-                        <h5>Available Models:</h5>
-                        <ul id="ollama1-available-models" class="models-list">
-                            <!-- Models will be listed here by JS -->
-                        </ul>
-                        <h5>Pull New Models:</h5>
-                        <div id="ollama1-pull-options" class="pull-options-list">
-                            <!-- Pull buttons will be here -->
-                        </div>
-                        <div id="ollama1-pull-status" class="pull-status-text"></div>
-                    </div>
-
-                    <div class="settings-column">
-                        <h4><i class="bi bi-person-x-fill"></i> Against LLM (Instance 2)</h4>
-                        <div class="form-group">
-                            <label for="against-model-select">Select Model for Debate:</label>
-                            <select id="against-model-select" class="model-select"></select>
-                        </div>
-                        <h5>Available Models:</h5>
-                        <ul id="ollama2-available-models" class="models-list">
-                            <!-- Models will be listed here by JS -->
-                        </ul>
-                        <h5>Pull New Models:</h5>
-                        <div id="ollama2-pull-options" class="pull-options-list">
-                            <!-- Pull buttons will be here -->
-                        </div>
-                        <div id="ollama2-pull-status" class="pull-status-text"></div>
-                    </div>
-                </div>
+        <div class="settings-panel" id="settings-panel" style="display: none">
+          <div class="settings-header">
+            <h3><i class="bi bi-sliders"></i> Model Configuration</h3>
+          </div>
+          <div class="settings-body">
+            <div class="settings-column">
+              <h4>
+                <i class="bi bi-person-x-fill"></i> Against LLM (Instance 2)
+              </h4>
+              <div class="form-group">
+                <label for="against-model-select"
+                  >Select Model for Debate:</label
+                >
+                <select id="against-model-select" class="model-select"></select>
+              </div>
+              <h5>Available Models:</h5>
+              <ul id="ollama2-available-models" class="models-list">
+                <!-- Models will be listed here by JS -->
+              </ul>
+              <h5>Pull New Models:</h5>
+              <div id="ollama2-pull-options" class="pull-options-list">
+                <!-- Pull buttons will be here -->
+              </div>
+              <div id="ollama2-pull-status" class="pull-status-text"></div>
             </div>
-            
-            <div class="topic-form-container" id="topic-form">
-                <h3><i class="bi bi-chat-square-quote"></i> Set Debate Topic</h3>
-                <div class="input-group">
-                    <input type="text" id="topic-input" placeholder="e.g., The Future of AI, Renewable Energy, Space Colonization">
-                    <button id="set-topic-btn" class="btn btn-primary">
-                        <i class="bi bi-check-circle"></i> Set Topic
-                    </button>
-                </div>
-                <p class="help-text"><i class="bi bi-info-circle"></i> Enter any topic and watch two AI debaters take opposing sides.</p>
+            <div class="settings-column">
+              <h4>
+                <i class="bi bi-person-check-fill"></i> For LLM (Instance 1)
+              </h4>
+              <div class="form-group">
+                <label for="for-model-select">Select Model for Debate:</label>
+                <select id="for-model-select" class="model-select"></select>
+              </div>
+              <h5>Available Models:</h5>
+              <ul id="ollama1-available-models" class="models-list">
+                <!-- Models will be listed here by JS -->
+              </ul>
+              <h5>Pull New Models:</h5>
+              <div id="ollama1-pull-options" class="pull-options-list">
+                <!-- Pull buttons will be here -->
+              </div>
+              <div id="ollama1-pull-status" class="pull-status-text"></div>
             </div>
-            
-            <div class="debate-meta">
-                <div class="status-panel">
-                    <span class="status-label">Status:</span>
-                    <span id="status-text" class="status-value">Idle</span>
-                </div>
-                
-                <div class="controls">
-                    <button id="start-btn" class="btn btn-primary">
-                        <i class="bi bi-play-fill"></i> Start Debate
-                    </button>
-                    <button id="stop-btn" class="btn btn-danger">
-                        <i class="bi bi-stop-fill"></i> Stop
-                    </button>
-                    <button id="reset-btn" class="btn btn-secondary">
-                        <i class="bi bi-arrow-repeat"></i> Reset
-                    </button>
-                </div>
+          </div>
+          <div
+            class="settings-footer"
+            style="
+              margin-top: 1.5rem;
+              padding-top: 1.5rem;
+              border-top: 1px solid var(--border-color);
+            "
+          >
+            <h4><i class="bi bi-arrow-repeat"></i> Debate Configuration</h4>
+            <div class="form-group">
+              <label for="max-turns-input">Number of Exchanges (1-5):</label>
+              <input
+                type="number"
+                id="max-turns-input"
+                class="model-select"
+                value="1"
+                min="1"
+                max="5"
+              />
             </div>
-            
-            <div class="debate-arena">
-                <div class="participants-display">
-                    <div class="participant-card participant-against">
-                        <div class="participant-header">
-                            <i class="bi bi-x-circle-fill participant-icon"></i>
-                            <span class="participant-label" id="against-position">Against</span>
-                        </div>
-                        <div class="typing-indicator against-typing" id="against-typing">
-                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                        </div>
-                    </div>
-                    <div class="vs-separator">VS</div>
-                    <div class="participant-card participant-for">
-                        <div class="participant-header">
-                            <i class="bi bi-check-circle-fill participant-icon"></i>
-                            <span class="participant-label" id="for-position">For</span>
-                        </div>
-                        <div class="typing-indicator for-typing" id="for-typing">
-                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="conversation-container" id="conversation">
-                    <!-- Messages will be inserted here -->
-                </div>
-            </div>
-            
-            <footer class="debate-footer">
-                <p><i class="bi bi-code-slash"></i> LLM Debate Arena &copy; 2024 <span class="separator">|</span> <i class="bi bi-lightning-charge-fill"></i> Powered by Ollama & Flask</p>
-            </footer>
+          </div>
         </div>
+
+        <div class="topic-form-container" id="topic-form">
+          <h3><i class="bi bi-chat-square-quote"></i> Set Debate Topic</h3>
+          <div class="input-group">
+            <input
+              type="text"
+              id="topic-input"
+              placeholder="e.g., The Future of AI, Renewable Energy, Space Colonization"
+            />
+            <button id="set-topic-btn" class="btn btn-primary">
+              <i class="bi bi-check-circle"></i> Set Topic
+            </button>
+          </div>
+          <p class="help-text">
+            <i class="bi bi-info-circle"></i> Enter any topic and watch two AI
+            debaters take opposing sides.
+          </p>
+        </div>
+
+        <div class="debate-meta">
+          <div class="status-panel">
+            <span class="status-label">Status:</span>
+            <span id="status-text" class="status-value">Idle</span>
+          </div>
+
+          <div class="controls">
+            <button id="start-btn" class="btn btn-primary">
+              <i class="bi bi-play-fill"></i> Start Debate
+            </button>
+            <button id="stop-btn" class="btn btn-danger">
+              <i class="bi bi-stop-fill"></i> Stop
+            </button>
+            <button id="reset-btn" class="btn btn-secondary">
+              <i class="bi bi-arrow-repeat"></i> Reset
+            </button>
+          </div>
+        </div>
+
+        <div class="debate-arena">
+          <div class="participants-display">
+            <div class="participant-card participant-against">
+              <div class="participant-header">
+                <i class="bi bi-x-circle-fill participant-icon"></i>
+                <span class="participant-label" id="against-position"
+                  >Against</span
+                >
+              </div>
+              <div class="typing-indicator against-typing" id="against-typing">
+                <span class="dot"></span><span class="dot"></span
+                ><span class="dot"></span>
+              </div>
+            </div>
+            <div class="vs-separator">VS</div>
+            <div class="participant-card participant-for">
+              <div class="participant-header">
+                <i class="bi bi-check-circle-fill participant-icon"></i>
+                <span class="participant-label" id="for-position">For</span>
+              </div>
+              <div class="typing-indicator for-typing" id="for-typing">
+                <span class="dot"></span><span class="dot"></span
+                ><span class="dot"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="conversation-container" id="conversation">
+            <!-- Messages will be inserted here -->
+          </div>
+        </div>
+
+        <footer class="debate-footer">
+          <p>
+            <i class="bi bi-code-slash"></i> LLM Debate Arena &copy; 2024
+            <span class="separator">|</span>
+            <i class="bi bi-lightning-charge-fill"></i> Powered by Ollama &
+            Flask
+          </p>
+        </footer>
+      </div>
     </div>
-    
+
     <script src="/static/js/main.js"></script>
-</body>
+  </body>
 </html>
-``` 

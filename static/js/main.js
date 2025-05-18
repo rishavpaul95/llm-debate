@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const debateTitle = document.getElementById('debate-title');
     const forPosition = document.getElementById('for-position');
     const againstPosition = document.getElementById('against-position');
+    const maxTurnsInput = document.getElementById('max-turns-input'); // Get the new input
     
     // Typing indicators
     const forTyping = document.getElementById('for-typing');
@@ -129,6 +130,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Store session ID in localStorage for persistence
         localStorage.setItem('llm_debate_socketio_id', sessionId);
         
+        if (data.max_turns !== undefined) {
+            maxTurnsInput.value = data.max_turns;
+        }
         // Don't automatically load history since we'll get it from the server
         isInitialLoad = false;
     });
@@ -433,7 +437,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const settingsAreEditable = !isDebateActive && !isGloballyOperatingOllama;
         settingsToggleBtn.disabled = isDebateActive; // Disable settings toggle if debate active
 
-        [forModelSelect, againstModelSelect].forEach(select => {
+        [forModelSelect, againstModelSelect, maxTurnsInput].forEach(select => { // Add maxTurnsInput here
             select.disabled = !settingsAreEditable;
         });
 
@@ -623,6 +627,9 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Received models_info:', data);
         currentPullableModels = data.pullable_models || [];
         currentDefaultModel = data.default_model || "gemma3:4b"; // Ensure this matches DEFAULT_MODEL_NAME in app.py
+        if (data.max_turns !== undefined) {
+            maxTurnsInput.value = data.max_turns;
+        }
 
         // ollama1 is "For LLM"
         updateAvailableModelsList(ollama1AvailableModelsList, data.ollama1_models, data.selected_for_model, forModelSelect, 'ollama1');
@@ -670,9 +677,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const selectedForModel = forModelSelect.value;
         const selectedAgainstModel = againstModelSelect.value;
+        const numExchanges = parseInt(maxTurnsInput.value, 10);
 
         if (!selectedForModel || !selectedAgainstModel) {
             alert("Please select models for both 'For' and 'Against' positions in the Settings panel.");
+            startBtn.innerHTML = originalText;
+            return;
+        }
+        if (isNaN(numExchanges) || numExchanges < 1 || numExchanges > 5) {
+            alert("Please enter a valid number of exchanges (1-5).");
+            maxTurnsInput.focus();
             startBtn.innerHTML = originalText;
             return;
         }
@@ -683,7 +697,8 @@ document.addEventListener('DOMContentLoaded', function() {
             body: JSON.stringify({ 
                 session_id: sessionId,
                 for_model: selectedForModel,
-                against_model: selectedAgainstModel
+                against_model: selectedAgainstModel,
+                max_turns: numExchanges // Send max_turns
             })
         })
             .then(response => response.json())
